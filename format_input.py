@@ -3,7 +3,7 @@ from PIL import Image, ImageEnhance
 
 
 RESULT_FOLDER = "input"
-RESULT_SIZE = 512
+RESULT_SIZE = 64
 RESULT_CULLING = 0.3
 
 
@@ -45,10 +45,10 @@ def transform_image(image, size):
         yield ImageEnhance.Color(image).enhance(0.8)
     def get_crops(image, size, num_var=5):
         min_dim = min(image.size)
-        scale = max(0.75, math.sqrt(2)*size/min_dim*1.1)
+        scale = max(0.5, math.sqrt(2)*size/min_dim*1.1)
         for _ in range(num_var):
             size = int(random.random()*min_dim*(1-scale)+min_dim*scale)
-            pos = (random.randrange(0,image.size[0]-size), random.randrange(0,image.size[1]-size))
+            pos = (random.randrange(0, image.size[0]-size), random.randrange(0, image.size[1]-size))
             yield image.crop((pos[0], pos[1], pos[0]+size, pos[1]+size))
     def get_transforms(image):
         yield image
