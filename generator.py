@@ -65,12 +65,13 @@ class Generator():
 
 
     def __create_session__(self):
+        saver = tf.train.Saver()
         session = tf.Session()
         session.run(tf.global_variables_initializer())
-        saver = tf.train.Saver()
         try:
             saver.restore(session, os.path.join(NETWORK_FOLDER, self.name))
-        except:
+        except Exception as e:
             print("No already trained network found (%s)"%os.path.join(NETWORK_FOLDER, self.name))
+            print(e)
         return session
 

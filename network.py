@@ -31,7 +31,7 @@ class GANetwork():
 
     def train(self, batches=10000):
         time = timer()
-        saver = tf.train.Saver(self.generator.theta+self.discriminator.theta)
+        saver = tf.train.Saver()
         with tf.Session() as session:
             session.run(tf.global_variables_initializer())
             try:
@@ -40,7 +40,7 @@ class GANetwork():
             except:
                 print("Training a new network")
             #Train
-            for i in range(batches):
+            for i in range(1, batches+1):
                 feed_dict = {
                     self.real_input: self.image_manager.get_batch(BATCH_SIZE),
                     self.fake_input: self.generator.random_input(BATCH_SIZE)
@@ -52,6 +52,6 @@ class GANetwork():
                     t = timer() - time
                     print("Iteration: %04d      D loss: %.1f      G loss: %.1f      Time: %02d:%02d:%02d" % \
                             (i, d_loss, g_loss, t//3600, t%3600//60, t%60))
-                    if i%500 == 0:
-                        self.generator.save_images(self.image_manager, 1, "e%05d"%i, session)
+                    if i%200 == 0:
+                        self.generator.save_images(1, "e%05d"%i, session, self.image_manager)
                         saver.save(session, os.path.join(NETWORK_FOLDER, self.name))

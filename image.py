@@ -1,7 +1,7 @@
 import sys, os, string, random, math
 from PIL import Image, ImageEnhance
 import numpy as np
-from config import INPUT_FOLDER, OUTPUT_FOLDER, IMAGE_SIZE
+from config import INPUT_FOLDER, OUTPUT_FOLDER, IMAGE_SIZE, BATCH_SIZE
 
 
 class ImageManager():
@@ -26,7 +26,7 @@ class ImageManager():
                 i.crop((1, 1, 2, 2))
 
 
-    def get_batch(self, batch_size=64):
+    def get_batch(self, batch_size=BATCH_SIZE):
         if self.keep_in_memory:
             return np.array([self.get_array(random.choice(self.images)) for _ in range(batch_size)])
         else:
@@ -45,7 +45,13 @@ class ImageManager():
     def get_variation(self, image):
         #Crop
         min_dim = min(image.size)
-        scale = max(0.5, math.sqrt(2)*self.image_size/min_dim*1.1)
+        scale = math.sqrt(2)*self.image_size*1.1
+        if scale*3 < min_dim:
+            scale = random.uniform(0.3, 0.7)
+        elif scale*2 < min_dim:
+            scale = random.uniform(min_dim, min_dim - scale)/min_dim
+        else:
+            scale = random.uniform(scale, min_dim)/min_dim
         size = int(random.random()*min_dim*(1-scale)+min_dim*scale)
         pos = (random.randrange(0, image.size[0]-size), random.randrange(0, image.size[1]-size))
         image = image.crop((pos[0], pos[1], pos[0]+size, pos[1]+size))
@@ -85,9 +91,14 @@ class ImageManager():
 
 
 if __name__ == "__main__":
-    print("Testing memory requiremens")
-    import generator
-    img = ImageManager(generator.INPUT_FOLDER, generator.OUTPUT_FOLDER, 512)
-    input("Press Enter to continue... (all images loaded)")
-    iml1 = img.get_batch()
-    input("Press Enter to continue... (also one batch)")
+    if len(os.sys.argv) > 1:
+        img = ImageManager(keep_in_memory=False)
+        for i in range(int(os.sys.argv[1])):
+            img.write(img.get_batch(1)[0],"variant_%d"%i)
+        print("Generated %s image variations as they are when fed to the network"%os.sys.argv[1])
+    else:
+        print("Testing memory requiremens")
+        img = ImageManager()
+        input("Press Enter to continue... (all images loaded)")
+        iml1 = img.get_batch(BATCH_SIZE*2)
+        input("Press Enter to continue... (also one double batch)")
