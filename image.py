@@ -1,11 +1,14 @@
 import sys, os, string, random, math
 from PIL import Image, ImageEnhance
 import numpy as np
+from config import INPUT_FOLDER, OUTPUT_FOLDER, IMAGE_SIZE
 
 
 class ImageManager():
 
-    def __init__(self, input_folder, output_folder, image_size, keep_in_memory=True):
+    def __init__(self, image_size=IMAGE_SIZE, input_folder=INPUT_FOLDER, output_folder=OUTPUT_FOLDER, keep_in_memory=True):
+        os.makedirs(input_folder, exist_ok=True)
+        os.makedirs(output_folder, exist_ok=True)
         #Attributes
         self.keep_in_memory = keep_in_memory
         self.input_folder = input_folder
