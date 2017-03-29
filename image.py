@@ -21,7 +21,9 @@ class ImageVariations():
         #Threads
         self.queue = Queue()
         self.files = os.listdir(input_folder)
-        self.threads = [Thread(target=self.thread, args=(f,), daemon=True) for f in np.split(files, 4)]
+        num_threads = 4
+        self.threads = [Thread(target=self.thread, args=(self.files[i::num_threads],), daemon=True)
+                        for i in range(num_threads)]
         self.event = Event()
         self.close = False
         for t in self.threads:
