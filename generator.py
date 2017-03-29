@@ -24,13 +24,15 @@ class Generator():
         for i in range(hidden_layers+1):
             w = tf.Variable(tf.truncated_normal([self.layer_data[i], self.layer_data[i+1]], stddev=0.1, name=self.name+"_gw"+str(i)))
             b = tf.Variable(tf.constant(0.1, shape=[self.layer_data[i+1]], name=self.name+"_gb"+str(i)))
-            prev_layer = tf.nn.relu(tf.matmul(prev_layer, w) + b)
             if i != hidden_layers:
+                prev_layer = tf.nn.relu(tf.matmul(prev_layer, w) + b)
                 prev_layer = tf.nn.dropout(prev_layer, drop_prob)
+            else:
+                prev_layer = tf.nn.tanh(tf.matmul(prev_layer, w) + b)
             self.theta.append(w)
             self.theta.append(b)
         #Output
-        self.output = prev_layer
+        self.output = prev_layer * 255
 
     def random_input(self, n=1):
         return np.random.uniform(-1., 1., size=[n, self.layer_data[0]])

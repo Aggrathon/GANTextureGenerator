@@ -44,11 +44,12 @@ class ImageVariations():
             images = [Image.open(os.path.join(self.input_folder, file)) for file in files]
         while True:
             if self.in_memory:
-                img = random.choice(images)
+                image = random.choice(images)
             else:
-                img = Image.open(os.path.join(self.input_folder, random.choice(files)))
-            img = self.get_variation(img)
-            self.queue.put(img)
+                image = Image.open(os.path.join(self.input_folder, random.choice(files)))
+            arr = np.asarray(self.get_variation(image))
+            arr.shape = self.image_size*self.image_size*3
+            self.queue.put(arr)
             if self.close:
                 return
             if self.queue.qsize() >= self.batch_size*2:
