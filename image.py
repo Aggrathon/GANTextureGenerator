@@ -101,13 +101,15 @@ def save_image(image, size=IMAGE_SIZE, name=None, output_folder=OUTPUT_FOLDER):
 
 if __name__ == "__main__":
     if len(os.sys.argv) > 1:
-        img = ImageManager(keep_in_memory=False)
+        img = ImageVariations(in_memory=False, batch_size=int(os.sys.argv[1]))
+        images = img.get_batch()
+        img.stop_threads()
         for i in range(int(os.sys.argv[1])):
-            img.write(img.get_batch(1)[0],"variant_%d"%i)
+            save_image(images[i], name="variant_%d"%i)
         print("Generated %s image variations as they are when fed to the network"%os.sys.argv[1])
     else:
         print("Testing memory requiremens")
-        img = ImageManager()
+        img = ImageVariations(batch_size=BATCH_SIZE*2)
         input("Press Enter to continue... (all images loaded)")
-        iml1 = img.get_batch(BATCH_SIZE*2)
+        iml1 = img.get_batch()
         input("Press Enter to continue... (also one double batch)")
