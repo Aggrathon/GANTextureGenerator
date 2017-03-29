@@ -1,7 +1,7 @@
 import os
 import tensorflow as tf
 import numpy as np
-from image import ImageManager
+from image import save_image
 from config import INPUT_SIZE, NETWORK_FOLDER, GEN_DROPOUT, GEN_HIDDEN_LAYERS, IMAGE_SIZE
 
 
@@ -32,46 +32,20 @@ class Generator():
         #Output
         self.output = prev_layer
 
-
     def random_input(self, n=1):
         return np.random.uniform(-1., 1., size=[n, self.layer_data[0]])
 
 
-    def generate(self, session, amount=1):
-        return session.run(self.output, feed_dict={self.input: self.random_input(amount)})
-
-    def save_images(self, amount=1, name=None, session=None, image_manager=None):
-        #Create Session
-        open_session = session is None
-        if open_session:
-            session = self.__create_session__()
+    def generate(self, session, amount=1, name=None):
         #Prepare Images
-        if image_manager is None:
-            image_manager = ImageManager(keep_in_memory=False)
         fullname = self.name
         if not name is None:
             fullname += '-'+name
-        #Generate image(s)
-        images = self.generate(session, amount)
+        images = session.run(self.output, feed_dict={self.input: self.random_input(amount)})
         #Save
         if amount == 1:
-            image_manager.write(images, fullname)
+            save_image(images, self.image_size, fullname)
         else:
             for i in range(amount):
-                image_manager.write(images[i], fullname+"-"+str(i))
-        #Close Session
-        if open_session:
-            session.close()
-
-
-    def __create_session__(self):
-        saver = tf.train.Saver()
-        session = tf.Session()
-        session.run(tf.global_variables_initializer())
-        try:
-            saver.restore(session, os.path.join(NETWORK_FOLDER, self.name))
-        except Exception as e:
-            print("No already trained network found (%s)"%os.path.join(NETWORK_FOLDER, self.name))
-            print(e)
-        return session
+                save_image(images[i], self.image_size, fullname+"-"+str(i))
 

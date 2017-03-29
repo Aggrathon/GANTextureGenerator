@@ -1,7 +1,7 @@
 import os
 from timeit import default_timer as timer
 import tensorflow as tf
-from image import ImageManager
+from image import ImageVariations
 from generator import Generator
 from discriminator import Discriminator
 from config import NETWORK_FOLDER, BATCH_SIZE, IMAGE_SIZE
@@ -9,12 +9,12 @@ from config import NETWORK_FOLDER, BATCH_SIZE, IMAGE_SIZE
 
 class GANetwork():
 
-    def __init__(self, name, image_size=IMAGE_SIZE, batch_size=BATCH_SIZE, network_folder=NETWORK_FOLDER, image_manager=None, generator=None, discriminator=None):
+    def __init__(self, name, image_size=IMAGE_SIZE, batch_size=BATCH_SIZE, network_folder=NETWORK_FOLDER, image_source=None, generator=None, discriminator=None):
         self.name = name
         #Setup Folders
         os.makedirs(NETWORK_FOLDER, exist_ok=True)
         #Setup Objects
-        self.image_manager = ImageManager() if image_manager is None else image_manager
+        self.image_manager = ImageVariations(image_size, batch_size) if image_source is None else image_source
         self.generator = Generator(name, image_size) if generator is None else generator
         self.discriminator = Discriminator(name, image_size) if discriminator is None else discriminator
         #Setup Networks
@@ -53,5 +53,5 @@ class GANetwork():
                     print("Iteration: %04d      D loss: %.1f      G loss: %.1f      Time: %02d:%02d:%02d" % \
                             (i, d_loss, g_loss, t//3600, t%3600//60, t%60))
                     if i%200 == 0:
-                        self.generator.save_images(1, "e%05d"%i, session, self.image_manager)
+                        self.generator.save_images(session, 1, "e%05d"%i)
                         saver.save(session, os.path.join(NETWORK_FOLDER, self.name))

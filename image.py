@@ -1,46 +1,56 @@
-import sys, os, string, random, math
+import os, random, math, time
+from queue import Queue
+from threading import Thread, Event
 from PIL import Image, ImageEnhance
 import numpy as np
 from config import INPUT_FOLDER, OUTPUT_FOLDER, IMAGE_SIZE, BATCH_SIZE
 
 
-class ImageManager():
-
-    def __init__(self, image_size=IMAGE_SIZE, input_folder=INPUT_FOLDER, output_folder=OUTPUT_FOLDER, keep_in_memory=True):
-        os.makedirs(input_folder, exist_ok=True)
-        os.makedirs(output_folder, exist_ok=True)
-        #Attributes
-        self.keep_in_memory = keep_in_memory
-        self.input_folder = input_folder
-        self.output_folder = output_folder
+class ImageVariations():
+    def __init__(self, image_size=IMAGE_SIZE, batch_size=BATCH_SIZE, in_memory=True, input_folder=INPUT_FOLDER):
+        #Parameters
         self.image_size = image_size
-        #Config
+        self.input_folder = input_folder
+        self.in_memory = in_memory
+        self.batch_size = batch_size
+        #Variation Config
         self.max_rotation = 30
         self.brightness_range = (0.7, 1.1)
         self.saturation_range = (0.7, 1.)
         self.contrast_range = (0.8, 1.2)
-        #File reading
-        if keep_in_memory:
-            self.images = [self.read(f) for f in os.listdir(input_folder)]
-            for i in self.images:
-                i.crop((1, 1, 2, 2))
+        #Threads
+        self.queue = Queue()
+        self.files = os.listdir(input_folder)
+        self.threads = [Thread(target=self.thread, args=(f,), daemon=True) for f in np.split(files, 4)]
+        self.event = Event()
+        self.close = False
+        for t in self.threads:
+            t.start()
 
+    def get_batch(self):
+        self.event.set()
+        images = [self.queue.get() for i in range(self.batch_size)]
+        self.event.clear()
+        return images
 
-    def get_batch(self, batch_size=BATCH_SIZE):
-        if self.keep_in_memory:
-            return np.array([self.get_array(random.choice(self.images)) for _ in range(batch_size)])
-        else:
-            files = os.listdir(self.input_folder)
-            return np.array([self.get_array_from_file(random.choice(files)) for _ in range(batch_size)])
+    def stop_threads(self):
+        self.close = True
+        self.event.set()
 
-
-    def get_array(self, image):
-        arr = np.asarray(self.get_variation(image))
-        arr.shape = self.image_size*self.image_size*3
-        return arr
-
-    def get_array_from_file(self, file):
-        return self.get_array(self.read(file))
+    def thread(self, files):
+        if self.in_memory:
+            images = [Image.open(os.path.join(self.input_folder, file)) for file in files]
+        while True:
+            if self.in_memory:
+                img = random.choice(images)
+            else:
+                img = Image.open(os.path.join(self.input_folder, random.choice(files)))
+            img = self.get_variation(img)
+            self.queue.put(img)
+            if self.close:
+                return
+            if self.queue.qsize() >= self.batch_size*2:
+                self.event.wait()
 
     def get_variation(self, image):
         #Crop
@@ -76,18 +86,15 @@ class ImageManager():
         return image.resize((self.image_size, self.image_size), Image.LANCZOS)
 
 
-    def read(self, file):
-        img = Image.open(os.path.join(self.input_folder, file))
-        return img
-
-    def write(self, image, name=None):
-        image.shape = self.image_size, self.image_size, 3
-        img = Image.fromarray(np.array(image, dtype=np.uint8))
-        if name is None:
-            fullname = "test.png"
-        else:
-            fullname = name+".png"
-        img.save(os.path.join(self.output_folder, fullname), "PNG")
+def save_image(image, size=IMAGE_SIZE, name=None, output_folder=OUTPUT_FOLDER):
+    os.makedirs(output_folder, exist_ok=True)
+    image.shape = size*size*3
+    img = Image.fromarray(np.array(image, dtype=np.uint8))
+    if name is None:
+        path = os.path.join(output_folder, "%d_test.png"%time.time())
+    else:
+        path = os.path.join(output_folder, '%d_%s.png'%(time.time(), name))
+    img.save(path, 'PNG')
 
 
 if __name__ == "__main__":
