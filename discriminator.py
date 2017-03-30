@@ -1,15 +1,18 @@
 import math
 import tensorflow as tf
 from operators import weight_bias, conv2d, relu_dropout
+from config import DiscriminatorConfig
 
 
 class Discriminator():
 
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, name, config=None):
         """Create a Discriminator from a config object"""
+        if config is None:
+            return Discriminator.from_config(name, DiscriminatorConfig())
         return Discriminator(
-            config.name,
+            name,
             config.image_size,
             config.colors,
             config.conv_layers,

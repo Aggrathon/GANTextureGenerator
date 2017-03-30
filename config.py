@@ -9,13 +9,27 @@ COLORED = False
 
 #Network
 BATCH_SIZE = 64
-INPUT_SIZE = 128
+DEFAULT_NAME = 'default'
 
-#Generator
-GEN_HIDDEN_LAYERS = 3
-GEN_DROPOUT = 0.3
 
-#Discriminator
-DIS_CONVOLUTIONAL_LAYERS = [32, 64]
-DIS_HIDDEN_LAYERS = 2
-DIS_DROPOUT = 0.5
+class GeneratorConfig():
+    def __init__(self):
+        self.image_size = IMAGE_SIZE
+        self.colors = 3 if COLORED else 1
+        self.expand_layers = 2
+        self.conv_layers = 3
+        self.conv_size = 32
+        self.input_size = 128
+        self.dropout = 0.4
+        self.batch_size = BATCH_SIZE
+
+class DiscriminatorConfig():
+    def __init__(self):
+        self.image_size = IMAGE_SIZE
+        self.colors = 3 if COLORED else 1
+        self.conv_layers = 3
+        self.conv_size = 32
+        self.class_layers = 2
+        self.dropout = 0.4
+        self.batch_size = BATCH_SIZE
+

@@ -15,8 +15,8 @@ class GANetwork():
         os.makedirs(NETWORK_FOLDER, exist_ok=True)
         #Setup Objects
         self.image_manager = ImageVariations(image_size, batch_size) if image_source is None else image_source
-        self.generator = Generator(name, image_size) if generator is None else generator
-        self.discriminator = Discriminator(name, image_size) if discriminator is None else discriminator
+        self.generator = Generator.from_config(name) if generator is None else generator
+        self.discriminator = Discriminator.from_config(name) if discriminator is None else discriminator
         #Setup Networks
         self.real_input = self.discriminator.input
         self.fake_input = self.generator.input

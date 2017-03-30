@@ -2,17 +2,19 @@ import os
 import tensorflow as tf
 import numpy as np
 from image import save_image
-from config import INPUT_SIZE, NETWORK_FOLDER, GEN_DROPOUT, GEN_HIDDEN_LAYERS, IMAGE_SIZE, COLORED
 from operators import weight_bias, conv2d_transpose, relu_dropout, filter_bias
+from config import GeneratorConfig
 
 
 class Generator():
 
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, name, config=None):
         """Create a generator from a config object"""
+        if config is None:
+            return Generator.from_config(name, GeneratorConfig())
         return Generator(
-            config.name,
+            name,
             config.image_size,
             config.colors,
             config.expand_layers,
@@ -24,7 +26,7 @@ class Generator():
         )
 
     def __init__(self, name, image_size=32, colors=1,
-                 expand_layers=2, conv_layers=2, conv_size=32, input_size=128, dropout=0.4, batch_size=64):
+                 expand_layers=2, conv_layers=3, conv_size=32, input_size=128, dropout=0.4, batch_size=64):
         self.name = name+"_generator"
         self.image_size = image_size
         self.input_size = input_size
