@@ -3,15 +3,18 @@ INPUT_FOLDER = 'input'
 OUTPUT_FOLDER = 'output'
 NETWORK_FOLDER = 'network'
 
-#Network
+#Image
 IMAGE_SIZE = 32
+COLORED = False
+
+#Network
 BATCH_SIZE = 64
 INPUT_SIZE = 128
 
 #Generator
-GEN_HIDDEN_LAYERS = 2
+GEN_HIDDEN_LAYERS = 3
 GEN_DROPOUT = 0.3
 
 #Discriminator
-DIS_HIDDEN_LAYERS = 2
+DIS_HIDDEN_LAYERS = 3
 DIS_DROPOUT = 0.5

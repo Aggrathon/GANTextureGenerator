@@ -1,19 +1,19 @@
 import tensorflow as tf
-from config import IMAGE_SIZE, DIS_HIDDEN_LAYERS, DIS_DROPOUT
+from config import IMAGE_SIZE, DIS_HIDDEN_LAYERS, DIS_DROPOUT, COLORED
 
 
 class Discriminator():
 
     def __init__(self, name, image_size=IMAGE_SIZE, hidden_layers=DIS_HIDDEN_LAYERS, dropout=DIS_DROPOUT):
         self.name = name
-        input_size = image_size*image_size*3
+        input_size = image_size*image_size*(3 if COLORED else 1)
         self.layer_data = [int((1-i/(hidden_layers+1))*input_size) for i in range(hidden_layers+1)] + [1]
         self.hidden_layers = hidden_layers
 
         #Network
         self.input = tf.placeholder(tf.float32, shape=[None, input_size])
         self.theta = []
-        self.dropout = tf.Variable(tf.constant(dropout, tf.float32))
+        self.dropout = dropout
         #Layer Variables
         for i in range(hidden_layers+1):
             w = tf.Variable(tf.truncated_normal([self.layer_data[i], self.layer_data[i+1]], stddev=0.1, name=self.name+"_gw"+str(i)))

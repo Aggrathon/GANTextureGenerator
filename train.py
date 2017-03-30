@@ -1,6 +1,5 @@
 import os
 from network import GANetwork
-from image import ImageManager
 
 
 if __name__ == '__main__':

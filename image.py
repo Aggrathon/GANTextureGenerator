@@ -3,7 +3,7 @@ from queue import Queue
 from threading import Thread, Event
 from PIL import Image, ImageEnhance
 import numpy as np
-from config import INPUT_FOLDER, OUTPUT_FOLDER, IMAGE_SIZE, BATCH_SIZE
+from config import INPUT_FOLDER, OUTPUT_FOLDER, IMAGE_SIZE, BATCH_SIZE, COLORED
 
 
 class ImageVariations():
@@ -21,11 +21,13 @@ class ImageVariations():
         #Threads
         self.queue = Queue()
         self.files = os.listdir(input_folder)
-        num_threads = 4
+        num_threads = os.cpu_count()
+        if num_threads is None:
+            num_threads = 4
         self.threads = [Thread(target=self.thread, args=(self.files[i::num_threads],), daemon=True)
                         for i in range(num_threads)]
         self.event = Event()
-        self.close = False
+        self.closing = False
         for t in self.threads:
             t.start()
 
@@ -35,24 +37,29 @@ class ImageVariations():
         self.event.clear()
         return images
 
-    def stop_threads(self):
-        self.close = True
+    def close(self):
+        self.closing = True
         self.event.set()
 
     def thread(self, files):
         if self.in_memory:
-            images = [Image.open(os.path.join(self.input_folder, file)) for file in files]
+            if COLORED:
+                images = [Image.open(os.path.join(self.input_folder, file)) for file in files]
+            else:
+                images = [Image.open(os.path.join(self.input_folder, file)).convert("L") for file in files]
         while True:
             if self.in_memory:
                 image = random.choice(images)
             else:
                 image = Image.open(os.path.join(self.input_folder, random.choice(files)))
+                if not COLORED:
+                    image = image.convert("L")
             arr = np.asarray(self.get_variation(image))
-            arr.shape = self.image_size*self.image_size*3
+            arr.shape = self.image_size*self.image_size*(3 if COLORED else 1)
             self.queue.put(arr)
-            if self.close:
+            if self.closing:
                 return
-            if self.queue.qsize() >= self.batch_size*2:
+            if self.queue.qsize() >= self.batch_size*3:
                 self.event.wait()
 
     def get_variation(self, image):
@@ -80,9 +87,10 @@ class ImageVariations():
         brightness = random.uniform(*self.brightness_range)
         if np.abs(brightness-1.0) > 0.05:
             image = ImageEnhance.Brightness(image).enhance(brightness)
-        saturation = random.uniform(*self.saturation_range)
-        if np.abs(saturation-1.0) > 0.05:
-            image = ImageEnhance.Color(image).enhance(saturation)
+        if COLORED:
+            saturation = random.uniform(*self.saturation_range)
+            if np.abs(saturation-1.0) > 0.05:
+                image = ImageEnhance.Color(image).enhance(saturation)
         contrast = random.uniform(*self.contrast_range)
         if np.abs(contrast-1.0) > 0.05:
             image = ImageEnhance.Contrast(image).enhance(contrast)
@@ -91,12 +99,13 @@ class ImageVariations():
 
 def save_image(image, size=IMAGE_SIZE, name=None, output_folder=OUTPUT_FOLDER):
     os.makedirs(output_folder, exist_ok=True)
-    image.shape = size*size*3
-    img = Image.fromarray(np.array(image, dtype=np.uint8))
+    image.shape = (size, size, 3) if COLORED else (size, size)
+    img = Image.fromarray(np.array(image, dtype=np.uint8), ("RGB" if COLORED else "L"))
+    add_time = time.time() - 1490000000
     if name is None:
-        path = os.path.join(output_folder, "%d_test.png"%time.time())
+        path = os.path.join(output_folder, "%d_test.png"%add_time)
     else:
-        path = os.path.join(output_folder, '%d_%s.png'%(time.time(), name))
+        path = os.path.join(output_folder, '%d_%s.png'%(add_time, name))
     img.save(path, 'PNG')
 
 
@@ -104,7 +113,7 @@ if __name__ == "__main__":
     if len(os.sys.argv) > 1:
         img = ImageVariations(in_memory=False, batch_size=int(os.sys.argv[1]))
         images = img.get_batch()
-        img.stop_threads()
+        img.close()
         for i in range(int(os.sys.argv[1])):
             save_image(images[i], name="variant_%d"%i)
         print("Generated %s image variations as they are when fed to the network"%os.sys.argv[1])
