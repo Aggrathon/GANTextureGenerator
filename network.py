@@ -27,7 +27,7 @@ class GANetwork():
                         tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=d_logit_fake, labels=tf.zeros_like(d_logit_fake)))
         self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=d_logit_fake, labels=tf.ones_like(d_logit_fake)))
         self.d_solver = tf.train.AdamOptimizer(0.1).minimize(self.d_loss, var_list=self.discriminator.theta)
-        self.g_solver = tf.train.AdamOptimizer(1.0).minimize(self.g_loss, var_list=self.generator.theta)
+        self.g_solver = tf.train.AdamOptimizer(0.1).minimize(self.g_loss, var_list=self.generator.theta)
 
     def train(self, batches=10000):
         time = timer()
@@ -54,4 +54,4 @@ class GANetwork():
                             (i, d_loss, g_loss, t//3600, t%3600//60, t%60))
                     if i%200 == 0:
                         saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
-                        self.generator.generate(session, 1, "e%05d"%i, True)
+                        self.generator.generate(session, 1, "%05d"%i, True)
