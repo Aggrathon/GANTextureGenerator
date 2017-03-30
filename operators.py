@@ -7,14 +7,21 @@ def weight_bias(name, shape, stddev=0.02, const=0.1):
 	b_var = tf.Variable(tf.constant(const, shape=shape[-1], name=name+"_b"))
 	return w_var, b_var
 
-def conv2d(input, weight, bias):
+def conv2d(in_tensor, weight, bias):
 	"""Create a convolutional layer"""
-	conv = tf.nn.conv2d(input, weight, [1, 1, 1, 1], "SAME")
+	conv = tf.nn.conv2d(in_tensor, weight, [1, 1, 1, 1], "SAME")
 	relu = tf.nn.relu(conv + bias)
 	return tf.nn.max_pool(relu, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
-def relu_dropout(input, weight, bias, dropout):
+def relu_dropout(in_tensor, weight, bias, dropout):
 	"""Create a relu layer with dropout"""
-	relu = tf.nn.relu(tf.matmul(input, weight) + bias)
+	relu = tf.nn.relu(tf.matmul(in_tensor, weight) + bias)
 	dropout = tf.nn.dropout(relu, dropout)
 	return dropout
+
+def conv2_transpose(in_tensor, weight, bias, output):
+	"""Create a transpose convolutional layer"""
+	deconv = tf.nn.conv2d_transpose(in_tensor, weight, output, [1, 2, 2, 1])
+	#Batch norm before relu?
+	relu = tf.nn.relu(deconv + bias)
+	return relu
