@@ -1,40 +1,38 @@
 import tensorflow as tf
-from config import IMAGE_SIZE, DIS_HIDDEN_LAYERS, DIS_DROPOUT, COLORED
+from config import IMAGE_SIZE, DIS_HIDDEN_LAYERS, DIS_DROPOUT, COLORED, DISCRIMINATOR
+from operators import weight_bias, conv2d, relu_dropout
 
 
 class Discriminator():
 
-    def __init__(self, name, image_size=IMAGE_SIZE, hidden_layers=DIS_HIDDEN_LAYERS, dropout=DIS_DROPOUT):
-        self.name = name
-        input_size = image_size*image_size*(3 if COLORED else 1)
-        self.layer_data = [int((1-i/(hidden_layers+1))*input_size) for i in range(hidden_layers+1)] + [1]
-        self.hidden_layers = hidden_layers
-
-        #Network
-        self.input = tf.placeholder(tf.float32, shape=[None, input_size])
-        self.theta = []
+    def __init__(self, name, image_size=32, colors=1, conv_layers=[32, 64], class_layers=2, dropout=0.4):
+        self.name = name+"_discriminator"
+        self.input_dimensions = [None, image_size, image_size, colors]
+        self.conv_layers = [1]+conv_layers
+        self.class_layers = class_layers
+        self.input = tf.placeholder(tf.float32, shape=self.input_dimensions)
+        self.theta = [] #Trainable variables
         self.dropout = dropout
-        #Layer Variables
-        for i in range(hidden_layers+1):
-            w = tf.Variable(tf.truncated_normal([self.layer_data[i], self.layer_data[i+1]], stddev=0.1, name=self.name+"_gw"+str(i)))
-            b = tf.Variable(tf.constant(0.1, shape=[self.layer_data[i+1]], name=self.name+"_gb"+str(i)))
-            self.theta.append(w)
-            self.theta.append(b)
+
+        #Network Layer Variables
+        for i in range(len(conv_layers)):
+            wb_vars = weight_bias(self.name+str(i), self.conv_layers[i:i+2])
+            self.theta.extend(wb_vars)
+        prev_layer_size = conv_layers[-1]
+        for i in range(class_layers+1):
+            next_layer_size = int(conv_layers[-1]*(1-i/class_layers)+1)
+            wb_vars = weight_bias(self.name+str(i), [prev_layer_size, next_layer_size])
+            prev_layer_size = next_layer_size
+            self.theta.extend(wb_vars)
 
 
     def get_network(self, input=None):
-        if input is None:
-            prev_layer = self.input
-        else:
-            prev_layer = input
-        for i in range(self.hidden_layers+1):
-            w = self.theta[i*2]
-            b = self.theta[i*2+1]
-            if i != self.hidden_layers:
-                prev_layer = tf.nn.relu(tf.matmul(prev_layer, w) + b)
-                prev_layer = tf.nn.dropout(prev_layer, self.dropout)
-            else:
-                prev_layer = tf.matmul(prev_layer, w) + b
-        return prev_layer
+        """Constructs a network for the given input (or placeholder self.input if None)"""
+        prev_layer = self.input if input is None else input
+        for i in range(0, len(self.conv_layers)*2-2, 2):
+            prev_layer = conv2d(prev_layer, self.theta[i], self.theta[i+1])
+        for i in range(len(self.conv_layers)*2, (len(self.conv_layers)+len(self.class_layers))*2, 2):
+            prev_layer = relu_dropout(prev_layer, self.theta[i], self.theta[i-1], self.dropout)
+        return tf.matmul(prev_layer, self.theta[-2]) + self.theta[-1]
 
 
