@@ -55,7 +55,8 @@ class ImageVariations():
                 if not COLORED:
                     image = image.convert("L")
             arr = np.asarray(self.get_variation(image))
-            arr.shape = self.image_size*self.image_size*(3 if COLORED else 1)
+            if not COLORED:
+                arr.shape = arr.shape+(1,)
             self.queue.put(arr)
             if self.closing:
                 return
