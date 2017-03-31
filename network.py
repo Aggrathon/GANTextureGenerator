@@ -31,6 +31,7 @@ class GANetwork():
 
     def train(self, batches=10000):
         time = timer()
+        last_save = time
         saver = tf.train.Saver()
         with tf.Session() as session:
             session.run(tf.global_variables_initializer())
@@ -45,13 +46,14 @@ class GANetwork():
                     self.real_input: self.image_manager.get_batch(),
                     self.fake_input: self.generator.random_input(BATCH_SIZE)
                 }
-                session.run([self.d_solver, self.g_solver], feed_dict=feed_dict)
+                d_loss, g_loss, _, _ = session.run(
+                    [self.d_loss, self.g_loss, self.d_solver, self.g_solver],
+                    feed_dict=feed_dict)
                 #Track progress
-                if i%50 == 0:
-                    d_loss, g_loss = session.run([self.d_loss, self.g_loss], feed_dict=feed_dict)
-                    t = timer() - time
-                    print("Iteration: %04d \t D loss: %.1f \t G loss: %.1f \t Time: %02d:%02d:%02d" % \
-                            (i, d_loss, g_loss, t//3600, t%3600//60, t%60))
-                    if i%200 == 0:
-                        saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
-                        self.generator.generate(session, 1, "%05d"%i, True)
+                t = timer() - time
+                print("Iteration: %04d \t D loss: %.1f \t G loss: %.1f \t Time: %02d:%02d:%02d" % \
+                        (i, d_loss, g_loss, t//3600, t%3600//60, t%60))
+                if i%100 == 0 or time() - last_save > 600:
+                    saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
+                    self.generator.generate(session, 1, "%05d"%i, True)
+                    last_save = time()

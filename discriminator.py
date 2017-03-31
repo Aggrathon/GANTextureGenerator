@@ -16,8 +16,8 @@ class Discriminator():
             config.image_size,
             config.colors,
             config.conv_layers,
-            config.class_layers,
             config.conv_size,
+            config.class_layers,
             config.dropout,
             config.batch_size
             )

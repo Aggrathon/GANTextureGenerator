@@ -120,7 +120,10 @@ if __name__ == "__main__":
         print("Generated %s image variations as they are when fed to the network"%os.sys.argv[1])
     else:
         print("Testing memory requiremens")
-        img = ImageVariations(batch_size=BATCH_SIZE*2)
+        img = ImageVariations(batch_size=BATCH_SIZE)
         input("Press Enter to continue... (all images loaded)")
         iml1 = img.get_batch()
-        input("Press Enter to continue... (also one double batch)")
+        iml2 = img.get_batch()
+        iml3 = img.get_batch()
+        iml4 = img.get_batch()
+        input("Press Enter to continue... (also four batches)")
