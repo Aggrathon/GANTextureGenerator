@@ -58,7 +58,8 @@ class GANetwork():
                     t = timer() - time
                     print("Iteration: %04d \t D loss: %.1f \t G loss: %.1f \t Time: %02d:%02d:%02d" % \
                             (i, d_loss, g_loss, t//3600, t%3600//60, t%60))
-                if i%100 == 0 or timer() - last_save > 600:
-                    saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
-                    self.generator.generate(session, 1, "%05d"%i)
-                    last_save = timer()
+                    if i%100 == 0 or timer() - last_save > 600:
+                        saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
+                        last_save = timer()
+                        if i%500 == 0:
+                            self.generator.generate(session, 1, "%05d"%i)

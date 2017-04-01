@@ -21,12 +21,11 @@ class Generator():
             config.conv_layers,
             config.conv_size,
             config.input_size,
-            config.dropout,
             config.batch_size
         )
 
     def __init__(self, name, image_size=32, colors=1,
-                 expand_layers=2, conv_layers=3, conv_size=32, input_size=128, dropout=0.4, batch_size=64):
+                 expand_layers=2, conv_layers=3, conv_size=32, input_size=128, batch_size=64):
         self.name = name
         self.image_size = image_size
         self.input_size = input_size
@@ -48,7 +47,7 @@ class Generator():
                     next_layer = conv_image_size*conv_image_size*colors
                 w, b = weight_bias('expand_layer%d'%i, [expand_layer_size, next_layer], 0.1, 0.1)
                 expand_layer_size = next_layer
-                prev_layer = relu_dropout(prev_layer, w, b, dropout)
+                prev_layer = tf.nn.relu(tf.matmul(prev_layer, w) + b)
                 self.theta.extend((w, b))
             #Conv layers
             prev_layer = tf.reshape(prev_layer, [-1, conv_image_size, conv_image_size, colors])

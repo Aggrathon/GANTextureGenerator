@@ -59,13 +59,3 @@ class Discriminator():
             self.theta.extend(wb_vars)
             self.real_output = tf.matmul(real_layer, self.theta[-2]) + self.theta[-1]
             self.fake_output = tf.matmul(fake_layer, self.theta[-2]) + self.theta[-1]
-
-
-if __name__ == "__main__":
-    import numpy as np
-    disc = Discriminator('asd', tf.placeholder(tf.float32, [1, 32, 32, 1]), batch_size=1, class_layers=0, conv_layers=1)
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
-    print("sess")
-    res = sess.run(disc.real_output, feed_dict={disc.real_input: np.random.uniform(0, 1, [1, 32, 32, 1])})
-    print(res)
