@@ -10,7 +10,7 @@ def weight_bias(name, shape, stddev=0.02, const=0.1):
 def conv2d(in_tensor, weight, bias):
 	"""Create a convolutional layer"""
 	conv = tf.nn.conv2d(in_tensor, weight, [1, 1, 1, 1], "SAME")
-	relu = tf.nn.relu(tf.reshape(tf.nn.bias_add(conv, bias), conv.get_shape()))
+	relu = tf.nn.relu(tf.nn.bias_add(conv, bias))
 	return tf.nn.avg_pool(relu, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 def relu_dropout(in_tensor, weight, bias, dropout):
@@ -23,8 +23,7 @@ def conv2d_transpose(in_tensor, weight, bias, out_shape):
 	"""Create a transpose convolutional layer"""
 	deconv = tf.nn.conv2d_transpose(in_tensor, weight, out_shape, [1, 2, 2, 1])
 	#Batch norm before relu?
-	relu = tf.nn.relu(tf.nn.bias_add(deconv, bias))
-	return tf.reshape(relu, deconv.get_shape())
+	return tf.nn.relu(tf.nn.bias_add(deconv, bias))
 
 def filter_bias(name, shape, stddev=0.02, const=0.1):
 	"""Create Filter and Bias tensors for a conv2d-transpose layer"""

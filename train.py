@@ -4,7 +4,7 @@ from network import GANetwork
 
 if __name__ == '__main__':
     if len(os.sys.argv) < 2:
-        GANetwork('default').train(1000)
+        GANetwork('default').train(10000)
     elif len(os.sys.argv) < 3:
         GANetwork(os.sys.argv[1]).train()
     else:
