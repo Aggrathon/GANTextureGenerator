@@ -2,82 +2,83 @@ import os
 import tensorflow as tf
 import numpy as np
 from image import save_image
-from operators import weight_bias, conv2d_transpose, relu_dropout, filter_bias
+from operators import conv2d_transpose, lerp_int, relu, conv2d_transpose_tanh
 from config import GeneratorConfig
 
 
 class Generator():
 
     @classmethod
-    def from_config(cls, name, config=None):
+    def from_config(cls, config=None):
         """Create a generator from a config object"""
         if config is None:
-            return Generator.from_config(name, GeneratorConfig())
+            return Generator.from_config(GeneratorConfig())
         return Generator(
-            name,
             config.image_size,
             config.colors,
             config.expand_layers,
             config.conv_layers,
             config.conv_size,
             config.input_size,
-            config.batch_size
+            config.batch_size,
+            config.learning_rate
         )
 
-    def __init__(self, name, image_size=32, colors=1,
-                 expand_layers=2, conv_layers=3, conv_size=32, input_size=128, batch_size=64):
-        self.name = name
+    def __init__(self, image_size=32, colors=1, expand_layers=2, conv_layers=3, conv_size=32,
+                 input_size=128, batch_size=64, learning_rate=0.001):
         self.image_size = image_size
         self.input_size = input_size
-        self.input = tf.placeholder(tf.float32, [None, input_size])
-        self.theta = [] #Trainable variables
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.output = None
+        self.gen_output = None
+        self.loss = None
+        self.solver = None
+        self.trainable_variables = None
 
-        #Network layer variables
-        prev_layer = self.input
-        expand_layer_size = input_size
-        conv_image_size = image_size // (2**conv_layers)
-        assert conv_image_size*(2**conv_layers) == image_size, \
-                "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
-        #Pre conv layers
-        with tf.name_scope('Generator') as scope:
+        #Network layers
+        with tf.variable_scope('generator') as scope:
+            self.scope = scope
+            #Network layer variables
+            self.input = tf.placeholder(tf.float32, [None, input_size])
+            prev_layer = self.input
+            conv_image_size = image_size // (2**conv_layers)
+            assert conv_image_size*(2**conv_layers) == image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
+            expand_layer_in_size = input_size
+            expand_layer_out_size = conv_image_size**2 * conv_size*(conv_layers)
+            #Pre conv layers
             for i in range(expand_layers):
-                if i != expand_layers -1:
-                    next_layer = int(input_size+(i+1)/expand_layers*(conv_image_size*conv_image_size*colors - input_size))
-                else:
-                    next_layer = conv_image_size*conv_image_size*colors
-                w, b = weight_bias('expand_layer%d'%i, [expand_layer_size, next_layer], 0.1, 0.1)
-                expand_layer_size = next_layer
-                prev_layer = tf.nn.relu(tf.matmul(prev_layer, w) + b)
-                self.theta.extend((w, b))
+                prev_layer = relu(prev_layer, lerp_int(expand_layer_in_size, expand_layer_out_size, (i+1)/expand_layers), 'expand_%d'%i)
+            prev_layer = tf.reshape(prev_layer, [-1, conv_image_size, conv_image_size, conv_size*(conv_layers)])
             #Conv layers
-            prev_layer = tf.reshape(prev_layer, [-1, conv_image_size, conv_image_size, colors])
-            generate_layer = prev_layer
-            for i in range(conv_layers):
-                size = conv_size*(conv_layers-i) if i < conv_layers-1 else colors
-                prev_size = conv_size*(conv_layers-i+1) if i != 0 else colors
-                w, b = filter_bias('convtr_layer%d'%i, [5, 5, size, prev_size], 0.1, 0.1)
-                conv_image_size *= 2
-                prev_layer = conv2d_transpose(prev_layer, w, b, [batch_size, conv_image_size, conv_image_size, size])
-                generate_layer = conv2d_transpose(generate_layer, w, b, [1, conv_image_size, conv_image_size, size])
-                self.theta.extend((w, b))
-            self.output = tf.nn.tanh(prev_layer)*255
-            self.generate_output = tf.nn.tanh(generate_layer)*255
+            genr_layer = prev_layer
+            for i in range(conv_layers-1):
+                prev_layer = conv2d_transpose(prev_layer, batch_size, (conv_layers-i-1)*conv_size, 'convolution_%d'%i)
+            self.output = conv2d_transpose_tanh(prev_layer, batch_size, colors, 'output')
+            #Image generating layers
+            scope.reuse_variables()
+            for i in range(conv_layers-1):
+                genr_layer = conv2d_transpose(genr_layer, 1, (conv_layers-i-1)*conv_size, 'convolution_%d'%i)
+            self.gen_output = conv2d_transpose_tanh(genr_layer, batch_size, colors, 'output')
+
+    def setup_loss(self, classification_logits):
+        with tf.variable_scope(self.scope, reuse=True):
+            self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=classification_logits, labels=tf.constant(0.9, shape=[self.batch_size, 1])), name='loss')
+            self.trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope.name)
+        self.solver = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss, var_list=self.trainable_variables)
 
 
     def random_input(self, n=1):
         return np.random.uniform(-1., 1., size=[n, self.input_size])
 
 
-    def generate(self, session, amount=1, name=None):
+    def generate(self, session, amount=1, name='generated'):
         #Prepare Images
-        fullname = self.name
-        if not name is None:
-            fullname += '-'+name
-        images = session.run(self.generate_output, feed_dict={self.input: self.random_input(amount)})
+        images = session.run(self.gen_output, feed_dict={self.input: self.random_input(amount)})
         #Save
         if amount == 1:
-            save_image(images, self.image_size, fullname)
+            save_image(images, self.image_size, name)
         else:
             for i in range(amount):
-                save_image(images[i], self.image_size, fullname+"-"+str(i))
+                save_image(images[i], self.image_size, name+"-"+str(i))
 

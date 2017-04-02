@@ -18,7 +18,6 @@ Generate a texture using:
 
 ## TODO
  - Better readme
- - instead of conv2d + pool try conv2d + lrelu in the discriminator
  - generate example
  - try colors
  - try bigger sizes than 32x32

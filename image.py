@@ -54,7 +54,7 @@ class ImageVariations():
                 image = Image.open(os.path.join(self.input_folder, random.choice(files)))
                 if not COLORED:
                     image = image.convert("L")
-            arr = np.asarray(self.get_variation(image))
+            arr = np.asarray(self.get_variation(image), dtype=np.float)
             if not COLORED:
                 arr.shape = arr.shape+(1,)
             self.queue.put(arr)
@@ -112,18 +112,18 @@ def save_image(image, size=IMAGE_SIZE, name=None, output_folder=OUTPUT_FOLDER):
 
 if __name__ == "__main__":
     if len(os.sys.argv) > 1:
-        img = ImageVariations(in_memory=False, batch_size=int(os.sys.argv[1]))
-        images = img.get_batch()
-        img.close()
+        imgvariations = ImageVariations(in_memory=False, batch_size=int(os.sys.argv[1]))
+        images_batch = imgvariations.get_batch()
+        imgvariations.close()
         for i in range(int(os.sys.argv[1])):
-            save_image(images[i], name="variant_%d"%i)
+            save_image(images_batch[i], name="variant_%d"%i)
         print("Generated %s image variations as they are when fed to the network"%os.sys.argv[1])
     else:
         print("Testing memory requiremens")
-        img = ImageVariations(batch_size=BATCH_SIZE)
+        imgvariations = ImageVariations(batch_size=BATCH_SIZE)
         input("Press Enter to continue... (all images loaded)")
-        iml1 = img.get_batch()
-        iml2 = img.get_batch()
-        iml3 = img.get_batch()
-        iml4 = img.get_batch()
+        iml1 = imgvariations.get_batch()
+        iml2 = imgvariations.get_batch()
+        iml3 = imgvariations.get_batch()
+        iml4 = imgvariations.get_batch()
         input("Press Enter to continue... (also four batches)")
