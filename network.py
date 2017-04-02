@@ -14,6 +14,7 @@ class GANetwork():
                  generator_config=GeneratorConfig(), discriminator_config=DiscriminatorConfig()):
         self.name = name
         self.batch_size = batch_size
+        self.iteration = tf.Variable(0, name=name+"_iterations")
         #Setup Folders
         os.makedirs(NETWORK_FOLDER, exist_ok=True)
         #Setup Objects
@@ -37,11 +38,13 @@ class GANetwork():
             session.run(tf.global_variables_initializer())
             try:
                 saver.restore(session, os.path.join(NETWORK_FOLDER, self.name))
+                start_iteration = session.run(self.iteration)
                 print("\nTraining an old network\n")
             except:
+                start_iteration = 0
                 print("\nTraining a new network\n")
             #Train
-            for i in range(1, batches+1):
+            for i in range(start_iteration+1, start_iteration+batches+1):
                 d_loss, g_loss, _, _ = session.run(
                     [self.discriminator.loss, self.generator.loss, self.discriminator.solver, self.generator.solver], 
                     feed_dict={
@@ -55,7 +58,8 @@ class GANetwork():
                     print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.1f \tG loss: %.1f" % \
                             (i, t//3600, t%3600//60, t%60, d_loss, g_loss))
                     if i%100 == 0 or timer() - last_save > 600:
+                        session.run(self.iteration.assign(i))
                         saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
                         last_save = timer()
                         if i%200 == 0:
-                            self.generator.generate(session, 1, "%s%05d"%(self.name, i))
+                            self.generator.generate(session, "%s%05d"%(self.name, i))

@@ -20,7 +20,8 @@ def generate(name, amount=1):
     gan = GANetwork(name)
     session = create_session(name)
     print("Generating %d images using the %s network"%(amount, name))
-    gan.generator.generate(session, amount)
+    for i in range(amount):
+        gan.generator.generate(session, gan.name+'-'+str(i))
 
 if __name__ == "__main__":
     if len(os.sys.argv) < 2:
