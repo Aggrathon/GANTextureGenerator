@@ -14,10 +14,10 @@ class ImageVariations():
         self.in_memory = in_memory
         self.batch_size = batch_size
         #Variation Config
-        self.max_rotation = 30
-        self.brightness_range = (0.7, 1.1)
+        self.max_rotation = 20
+        self.brightness_range = (0.7, 1.2)
         self.saturation_range = (0.7, 1.)
-        self.contrast_range = (0.8, 1.2)
+        self.contrast_range = (0.9, 1.3)
         #Threads
         self.queue = Queue()
         self.files = os.listdir(input_folder)

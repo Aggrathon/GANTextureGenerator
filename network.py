@@ -55,11 +55,11 @@ class GANetwork():
                 #Track progress
                 if i%10 == 0:
                     t = timer() - time
-                    print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.1f \tG loss: %.1f" % \
+                    print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f \tG loss: %.2f" % \
                             (i, t//3600, t%3600//60, t%60, d_loss, g_loss))
                     if i%100 == 0 or timer() - last_save > 600:
                         session.run(self.iteration.assign(i))
                         saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
                         last_save = timer()
                         if i%200 == 0:
-                            self.generator.generate(session, "%s%05d"%(self.name, i))
+                            self.generator.generate(session, "%s_%05d"%(self.name, i))
