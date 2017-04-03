@@ -37,12 +37,14 @@ def lrelu(tensor, leak: float=0.2):
 
 # Network Layers
 
-def conv2d(tensor, output_size: int, name: str='conv2d', stddev: float=0.02, term: float=0.01):
+def conv2d(tensor, output_size: int, name: str='conv2d', norm: bool=True, stddev: float=0.02, term: float=0.01):
 	"""Create a convolutional layer"""
 	with tf.variable_scope(name):
 		weight, bias = weight_bias([5, 5, int(tensor.get_shape()[-1]), output_size], stddev, term)
 		conv = tf.nn.conv2d(tensor, weight, [1, 2, 2, 1], "SAME")
-		#Batch norm before relu?
+		if norm:
+			conv = tf.contrib.layers.batch_norm(conv, decay=0.9, updates_collections=None, scale=False,
+				trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
 		return lrelu(tf.nn.bias_add(conv, bias))
 
 def relu(tensor, output_size: int, name: str='relu', stddev: float=0.02, term: float=0.01):
@@ -64,14 +66,16 @@ def linear(tensor, output_size: int, name: str='linear', stddev: float=0.02, ter
 		weight, bias = weight_bias([tensor.get_shape()[-1], output_size], stddev, term)
 		return tf.matmul(tensor, weight) + bias
 
-def conv2d_transpose(tensor, batch_size=1, conv_size=32, name: str='conv2d_transpose', stddev: float=0.02, term: float=0.01):
+def conv2d_transpose(tensor, batch_size=1, conv_size=32, name: str='conv2d_transpose', norm: bool=True, stddev: float=0.02, term: float=0.01):
 	"""Create a transpose convolutional layer"""
 	with tf.variable_scope(name):
 		tensor_shape = tensor.get_shape()
 		filt, bias = filter_bias([5, 5, conv_size, tensor_shape[-1]], stddev, term)
 		conv_shape = [batch_size, int(tensor_shape[1]*2), int(tensor_shape[2]*2), conv_size]
 		deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 2, 2, 1])
-		#Batch norm before relu?
+		if norm:
+			deconv = tf.contrib.layers.batch_norm(deconv, decay=0.9, updates_collections=None, scale=False,
+				trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
 		return tf.nn.relu(tf.nn.bias_add(deconv, bias))
 
 def conv2d_transpose_tanh(tensor, batch_size=1, conv_size=32, name: str='conv2d_transpose_tanh', stddev: float=0.02, factor: float=255.0):
