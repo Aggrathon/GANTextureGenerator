@@ -2,7 +2,7 @@ import os
 import tensorflow as tf
 import numpy as np
 from image import save_image
-from operators import conv2d_transpose, lerp_int, conv2d_transpose_tanh, linear
+from operators import conv2d_transpose, conv2d_transpose_tanh, expand_relu
 from config import GeneratorConfig
 
 
@@ -43,8 +43,7 @@ class Generator():
             assert conv_image_size*(2**conv_layers) == image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
             #Input Layers
             self.input = tf.placeholder(tf.float32, [None, input_size])
-            prev_layer = linear(self.input, conv_image_size**2 * conv_size*2**(conv_layers-1), 'expand', 0.6, 0)
-            prev_layer = tf.reshape(prev_layer, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)])
+            prev_layer = expand_relu(self.input, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)], 'expand')
             #Conv layers
             for i in range(conv_layers-1):
                 prev_layer = conv2d_transpose(prev_layer, batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)

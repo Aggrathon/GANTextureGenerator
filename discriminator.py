@@ -42,7 +42,7 @@ class Discriminator():
             def create_network(layer):
                 #Convolutional layers
                 for i in range(conv_layers):
-                    layer = conv2d(layer, conv_size*(i+1), name='convolution_%d'%i)
+                    layer = conv2d(layer, conv_size*(i+1), name='convolution_%d'%i, norm=(i != 0))
                 layer = tf.reshape(layer, [batch_size, conv_output_size])
                 #Classification layers
                 for i in range(class_layers):
