@@ -43,11 +43,11 @@ class Generator():
             assert conv_image_size*(2**conv_layers) == image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
             #Input Layers
             self.input = tf.placeholder(tf.float32, [None, input_size])
-            prev_layer = linear(self.input, conv_image_size**2 * conv_size*conv_layers, 'expand', 0.6, 0)
-            prev_layer = tf.reshape(prev_layer, [-1, conv_image_size, conv_image_size, conv_size*(conv_layers)])
+            prev_layer = linear(self.input, conv_image_size**2 * conv_size*2**(conv_layers-1), 'expand', 0.6, 0)
+            prev_layer = tf.reshape(prev_layer, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)])
             #Conv layers
             for i in range(conv_layers-1):
-                prev_layer = conv2d_transpose(prev_layer, batch_size, (conv_layers-i-1)*conv_size, 'convolution_%d'%i)
+                prev_layer = conv2d_transpose(prev_layer, batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)
             self.output = conv2d_transpose_tanh(prev_layer, batch_size, colors, 'output', factor=255.0)
 
     def setup_loss(self, classification_logits):

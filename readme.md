@@ -18,8 +18,9 @@ Generate a texture using:
 
 ## TODO
  - Better readme
- - generate example
- - try colors
- - try bigger sizes than 32x32
+ - Generate example
+ - Try colors
+ - Try bigger sizes than 64x64
     - maybe through an upscaling GAN
+ - Try batch normalization
  - Try making repeatable textures
