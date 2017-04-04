@@ -52,8 +52,9 @@ class GANetwork():
             self.image_manager.batch_size = batch_size
             self.image_manager.image_size = image_size
             self.image_manager.colored = (colors == 3)
+        self.image_manager.start_threads()
         #Setup Networks
-        self.iterations = tf.Variable(0, name="training_iterations")
+        self.iterations = tf.Variable(0, name="training_iterations", trainable=False)
         self.generator_input, self.generator_output, self.image_output = \
             self.generator(generator_convolutions, generator_base_width)
         self.image_input, self.image_logit, self.generated_logit = \
@@ -110,7 +111,7 @@ class GANetwork():
     def loss_functions(self, real_logit, fake_logit):
         """Create loss calculations for the networks"""
         with tf.variable_scope('loss'):
-            with tf.variable_scope('discriminator'):
+            with tf.name_scope('discriminator'):
                 real_loss = tf.reduce_mean(
                     tf.nn.sigmoid_cross_entropy_with_logits(logits=real_logit, labels=tf.ones_like(real_logit)),
                     name='real_loss')
@@ -118,7 +119,7 @@ class GANetwork():
                     tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=tf.zeros_like(fake_logit)),
                     name='fake_loss')
                 d_loss = tf.add(real_loss, fake_loss, 'loss')
-            with tf.variable_scope('generator'):
+            with tf.name_scope('generator'):
                 batch_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=tf.ones_like(fake_logit))
                 g_loss = tf.reduce_mean(batch_loss, name='loss')
         return g_loss, d_loss, real_loss, fake_loss
@@ -127,7 +128,7 @@ class GANetwork():
         """Create solvers for the networks"""
         with tf.variable_scope('train'):
             g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
-            g_solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(g_loss, var_list=g_vars)
+            g_solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
             d_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
             d_solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(d_loss, var_list=d_vars)
         return g_solver, d_solver
@@ -168,26 +169,26 @@ class GANetwork():
             #Train
             try:
                 for i in range(start_iteration, start_iteration+batches):
-                        d_r_l, d_f_l, d_loss, g_loss, _, _, _ = session.run(
-                            [self.d_loss_real, self.d_loss_fake, self.discriminator_loss,
-                            self.generator_loss, self.discriminator_solver, self.generator_solver,
-                            self.iterations.assign(i)],
-                            feed_dict={
-                                self.image_input: self.image_manager.get_batch(),
-                                self.generator_input: self.random_input(self.batch_size)
-                            }
-                        )
-                        #Track progress
-                        if i%10 == 0:
-                            t = timer() - time
-                            print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
-                                    (i, t//3600, t%3600//60, t%60, d_loss, d_r_l, d_f_l, g_loss))
-                            if i%100 == 0 or timer() - last_save > 600:
-                                last_save = self.__save_network__(session, saver)
-                                if i%200 == 0:
-                                    self.generate(session, "%s_%05d"%(self.name, i))
+                    d_r_l, d_f_l, d_loss, g_loss, _, _ = session.run(
+                        [self.d_loss_real, self.d_loss_fake, self.discriminator_loss,
+                        self.generator_loss, self.discriminator_solver, self.generator_solver],
+                        feed_dict={
+                            self.image_input: self.image_manager.get_batch(),
+                            self.generator_input: self.random_input(self.batch_size)
+                        }
+                    )
+                    #Track progress
+                    if i%10 == 0:
+                        t = timer() - time
+                        print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
+                                (i, t//3600, t%3600//60, t%60, d_loss, d_r_l, d_f_l, g_loss))
+                        if timer() - last_save > 600:
+                            saver.save(session, os.path.join(self.directory, self.name))
+                            last_save = timer()
+                        if i%500 == 0:
+                            self.generate(session, "%s_%05d"%(self.name, i))
             finally:
-                self.__save_network__(session, saver)
+                saver.save(session, os.path.join(self.directory, self.name))
 
     def __setup_session__(self, session, saver):
         session.run(tf.global_variables_initializer())
@@ -200,7 +201,3 @@ class GANetwork():
             tf.summary.FileWriter(os.path.join(LOG_FOLDER, self.name), session.graph)
             print("\nTraining a new network\n")
         return start_iteration
-
-    def __save_network__(self, session, saver):
-        saver.save(session, os.path.join(self.directory, self.name))
-        return timer()
