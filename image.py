@@ -102,7 +102,7 @@ def save_image(image, size=IMAGE_SIZE, name=None, output_folder=OUTPUT_FOLDER):
     os.makedirs(output_folder, exist_ok=True)
     image.shape = (size, size, 3) if COLORED else (size, size)
     img = Image.fromarray(np.array(image, dtype=np.uint8), ("RGB" if COLORED else "L"))
-    add_time = time.time() - 1490000000
+    add_time = time.time() - 1500000000
     if name is None:
         path = os.path.join(output_folder, "%d_test.png"%add_time)
     else:

@@ -98,7 +98,8 @@ ENV/
 .vscode/*
 
 
-### Data Files ###
+### Data and Network Files ###
 input/
 network/
 output/
+logs/

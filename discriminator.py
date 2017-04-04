@@ -34,8 +34,10 @@ class Discriminator():
         self.solver = None
 
         #Network Layers
-        with tf.variable_scope('discriminator') as scope:
-            self.real_input = tf.placeholder(tf.uint8, shape=[batch_size, image_size, image_size, colors], name='real_input')
+        with tf.variable_scope('discriminator'):
+            with tf.variable_scope('real_input'):
+                self.real_input = tf.placeholder(tf.uint8, shape=[batch_size, image_size, image_size, colors], name='image_input')
+                real_input = tf.subtract(tf.to_float(self.real_input)/127.5, 1, name='scaling')
             conv_output_size = ((image_size//(2**conv_layers))**2) * conv_size * conv_layers
             class_output_size = 2**int(math.log(conv_output_size//2, 2))
             #Create Layers
@@ -48,15 +50,17 @@ class Discriminator():
                 for i in range(class_layers):
                     layer = relu_dropout(layer, class_output_size, dropout, 'classification_%d'%i)
                 return linear(layer, 1, 'output')
-            self.fake_output = create_network(self.fake_input)
-            scope.reuse_variables()
-            self.real_output = create_network(tf.to_float(self.real_input)/127.5 - 1)
+            with tf.variable_scope('network') as scope:
+                self.fake_output = create_network(self.fake_input)
+                scope.reuse_variables()
+                self.real_output = create_network(real_input)
             #Loss and solver functions
             with tf.name_scope('loss'):
                 self.real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.real_output, labels=tf.constant(0.9, shape=[batch_size, 1])))
                 self.fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.fake_output, labels=tf.constant(0.1, shape=[batch_size, 1])))
                 self.loss = self.real_loss + self.fake_loss
             self.trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-        self.solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(self.loss, var_list=self.trainable_variables)
+            with tf.name_scope('train'):
+                self.solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(self.loss, var_list=self.trainable_variables)
 
         

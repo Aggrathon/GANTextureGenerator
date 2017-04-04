@@ -88,7 +88,7 @@ def conv2d_transpose_tanh(tensor, batch_size=1, conv_size=32, name: str='conv2d_
 		deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 2, 2, 1])
 		return tf.nn.tanh(deconv)
 
-def expand_relu(tensor, out_shape, name: str='expand_relu', norm: bool=True, stddev: float=0.05, term: float=0.0):
+def expand_relu(tensor, out_shape, name: str='expand_relu', norm: bool=True, stddev: float=0.05, term: float=0.001):
 	"""Create a layer that expands an input to a shape"""
 	with tf.variable_scope(name) as scope:
 		weight, bias = weight_bias([tensor.get_shape()[-1], np.prod(out_shape[1:])], stddev, term)

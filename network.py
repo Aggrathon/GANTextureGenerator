@@ -4,19 +4,19 @@ import tensorflow as tf
 from image import ImageVariations
 from generator import Generator
 from discriminator import Discriminator
-from config import NETWORK_FOLDER, BATCH_SIZE, IMAGE_SIZE, LEARNING_RATE, GeneratorConfig, DiscriminatorConfig
+from config import NETWORK_FOLDER, BATCH_SIZE, IMAGE_SIZE, LOG_FOLDER, GeneratorConfig, DiscriminatorConfig
 
 
 class GANetwork():
 
-    def __init__(self, name, image_size=IMAGE_SIZE, batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE,
-                 network_folder=NETWORK_FOLDER, image_source=None, 
+    def __init__(self, name, image_size=IMAGE_SIZE, batch_size=BATCH_SIZE, network_folder=NETWORK_FOLDER, image_source=None,
                  generator_config=GeneratorConfig(), discriminator_config=DiscriminatorConfig()):
         self.name = name
         self.batch_size = batch_size
-        self.iteration = tf.Variable(0, name=name+"_iterations")
+        self.iteration = tf.Variable(0, name="training_iterations")
         #Setup Folders
-        os.makedirs(NETWORK_FOLDER, exist_ok=True)
+        os.makedirs(network_folder, exist_ok=True)
+        os.makedirs(LOG_FOLDER, exist_ok=True)
         #Setup Objects
         generator_config.batch_size = batch_size
         discriminator_config.batch_size = batch_size
@@ -69,6 +69,7 @@ class GANetwork():
             print("\nTraining an old network\n")
         except:
             start_iteration = 0
+            tf.summary.FileWriter(os.path.join(LOG_FOLDER, self.name), session.graph)
             print("\nTraining a new network\n")
         return start_iteration
 

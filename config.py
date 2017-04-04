@@ -2,6 +2,7 @@
 INPUT_FOLDER = 'input'
 OUTPUT_FOLDER = 'output'
 NETWORK_FOLDER = 'network'
+LOG_FOLDER = 'logs'
 
 #Image
 IMAGE_SIZE = 64
