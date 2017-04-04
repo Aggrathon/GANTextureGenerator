@@ -35,7 +35,7 @@ class Discriminator():
 
         #Network Layers
         with tf.variable_scope('discriminator') as scope:
-            self.real_input = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, colors], name='real_input')
+            self.real_input = tf.placeholder(tf.uint8, shape=[batch_size, image_size, image_size, colors], name='real_input')
             conv_output_size = ((image_size//(2**conv_layers))**2) * conv_size * conv_layers
             class_output_size = 2**int(math.log(conv_output_size//2, 2))
             #Create Layers
@@ -50,13 +50,13 @@ class Discriminator():
                 return linear(layer, 1, 'output')
             self.fake_output = create_network(self.fake_input)
             scope.reuse_variables()
-            self.real_output = create_network(self.real_input)
+            self.real_output = create_network(tf.to_float(self.real_input)/127.5 - 1)
             #Loss and solver functions
             with tf.name_scope('loss'):
-                real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.real_output, labels=tf.constant(0.9, shape=[batch_size, 1])))
-                fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.fake_output, labels=tf.constant(0.1, shape=[batch_size, 1])))
-                self.loss = real_loss + fake_loss
+                self.real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.real_output, labels=tf.constant(0.9, shape=[batch_size, 1])))
+                self.fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.fake_output, labels=tf.constant(0.1, shape=[batch_size, 1])))
+                self.loss = self.real_loss + self.fake_loss
             self.trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-        self.solver = tf.train.AdamOptimizer(learning_rate).minimize(self.loss, var_list=self.trainable_variables)
+        self.solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(self.loss, var_list=self.trainable_variables)
 
         

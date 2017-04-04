@@ -47,7 +47,8 @@ class Generator():
             #Conv layers
             for i in range(conv_layers-1):
                 prev_layer = conv2d_transpose(prev_layer, batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)
-            self.output = conv2d_transpose_tanh(prev_layer, batch_size, colors, 'output', factor=255.0)
+            self.output = conv2d_transpose_tanh(prev_layer, batch_size, colors, 'output')
+            self.image_output = tf.multiply(self.output + 1, 255, name="image")
 
     def setup_loss(self, classification_logits):
         """Creates the loss functions and the optimizers when fed a classification tensor"""
@@ -64,7 +65,7 @@ class Generator():
 
 
     def generate(self, session, name='generated'):
-        losses, images = session.run([self.batch_loss, self.output], feed_dict={self.input: self.random_input(self.batch_size)})
+        losses, images = session.run([self.batch_loss, self.image_output], feed_dict={self.input: self.random_input(self.batch_size)})
         image = images[max(range(self.batch_size), key=lambda i: losses[i])]
         save_image(image, self.image_size, name)
 

@@ -30,36 +30,49 @@ class GANetwork():
         self.fake_input = self.generator.input
         self.generator.setup_loss(self.discriminator.fake_output)
 
+
     def train(self, batches=10000):
-        time = timer()
-        last_save = time
+        """Train the network for a number of batches (continuing if there is an existing model)"""
+        last_save = time = timer()
         saver = tf.train.Saver()
         with tf.Session() as session:
-            session.run(tf.global_variables_initializer())
-            try:
-                saver.restore(session, os.path.join(NETWORK_FOLDER, self.name))
-                start_iteration = session.run(self.iteration)
-                print("\nTraining an old network\n")
-            except:
-                start_iteration = 0
-                print("\nTraining a new network\n")
+            start_iteration = self.__setup_session__(session, saver) + 1
             #Train
-            for i in range(start_iteration+1, start_iteration+batches+1):
-                d_loss, g_loss, _, _ = session.run(
-                    [self.discriminator.loss, self.generator.loss, self.discriminator.solver, self.generator.solver], 
-                    feed_dict={
-                        self.real_input: self.image_manager.get_batch(),
-                        self.fake_input: self.generator.random_input(self.batch_size)
-                    }
-                )
-                #Track progress
-                if i%10 == 0:
-                    t = timer() - time
-                    print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f \tG loss: %.2f" % \
-                            (i, t//3600, t%3600//60, t%60, d_loss, g_loss))
-                    if i%100 == 0 or timer() - last_save > 600:
-                        session.run(self.iteration.assign(i))
-                        saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
-                        last_save = timer()
-                        if i%200 == 0:
-                            self.generator.generate(session, "%s_%05d"%(self.name, i))
+            for i in range(start_iteration, start_iteration+batches):
+                try:
+                    d_r_l, d_f_l, d_loss, g_loss, _, _ = session.run(
+                        [self.discriminator.real_loss, self.discriminator.fake_loss, self.discriminator.loss,
+                         self.generator.loss, self.discriminator.solver, self.generator.solver],
+                        feed_dict={
+                            self.real_input: self.image_manager.get_batch(),
+                            self.fake_input: self.generator.random_input(self.batch_size)
+                        }
+                    )
+                    #Track progress
+                    if i%10 == 0:
+                        t = timer() - time
+                        print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
+                                (i, t//3600, t%3600//60, t%60, d_loss, d_r_l, d_f_l, g_loss))
+                        if i%100 == 0 or timer() - last_save > 600:
+                            last_save = self.__save_network__(session, saver, i)
+                            if i%200 == 0:
+                                self.generator.generate(session, "%s_%05d"%(self.name, i))
+                except (KeyboardInterrupt, SystemExit):
+                    self.__save_network__(session, saver, i)
+                    raise
+
+    def __setup_session__(self, session, saver):
+        session.run(tf.global_variables_initializer())
+        try:
+            saver.restore(session, os.path.join(NETWORK_FOLDER, self.name))
+            start_iteration = session.run(self.iteration)
+            print("\nTraining an old network\n")
+        except:
+            start_iteration = 0
+            print("\nTraining a new network\n")
+        return start_iteration
+
+    def __save_network__(self, session, saver, iteration):
+        session.run(self.iteration.assign(iteration))
+        saver.save(session, os.path.join(NETWORK_FOLDER, self.name))
+        return timer()

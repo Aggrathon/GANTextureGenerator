@@ -75,22 +75,20 @@ def conv2d_transpose(tensor, batch_size=1, conv_size=32, name: str='conv2d_trans
 		conv_shape = [batch_size, int(tensor_shape[1]*2), int(tensor_shape[2]*2), conv_size]
 		deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 2, 2, 1])
 		if norm:
-			#deconv = tf.contrib.layers.batch_norm(deconv, decay=0.9, updates_collections=None, scale=False,
-			#	trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
 			deconv = tf.contrib.layers.batch_norm(deconv, decay=0.9, updates_collections=None, scale=False,
-				scope="normalization", is_training=True, epsilon=0.00001)
+				trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
 		return tf.nn.relu(tf.nn.bias_add(deconv, bias))
 
-def conv2d_transpose_tanh(tensor, batch_size=1, conv_size=32, name: str='conv2d_transpose_tanh', stddev: float=0.02, factor: float=255.0):
+def conv2d_transpose_tanh(tensor, batch_size=1, conv_size=32, name: str='conv2d_transpose_tanh', stddev: float=0.02):
 	"""Create a transpose convolutional layer"""
 	with tf.variable_scope(name):
 		tensor_shape = tensor.get_shape()
 		filt = tf.get_variable('filter', [5, 5, conv_size, tensor_shape[-1]], tf.float32, tf.random_normal_initializer(0, stddev), trainable=True)
 		conv_shape = [batch_size, int(tensor_shape[1]*2), int(tensor_shape[2]*2), conv_size]
 		deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 2, 2, 1])
-		return tf.nn.tanh(deconv)*factor
+		return tf.nn.tanh(deconv)
 
-def expand_relu(tensor, out_shape, name: str='expand_relu', norm: bool=True, stddev: float=0.5, term: float=0.0):
+def expand_relu(tensor, out_shape, name: str='expand_relu', norm: bool=True, stddev: float=0.05, term: float=0.0):
 	"""Create a layer that expands an input to a shape"""
 	with tf.variable_scope(name) as scope:
 		weight, bias = weight_bias([tensor.get_shape()[-1], np.prod(out_shape[1:])], stddev, term)

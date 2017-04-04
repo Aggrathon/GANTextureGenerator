@@ -9,7 +9,7 @@ COLORED = False
 
 #Network
 BATCH_SIZE = 32
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.1
 
 
 class GeneratorConfig():
@@ -17,7 +17,7 @@ class GeneratorConfig():
         self.image_size = IMAGE_SIZE
         self.colors = 3 if COLORED else 1
         self.conv_layers = 5
-        self.conv_size = 16
+        self.conv_size = 32
         self.input_size = 128
         self.batch_size = BATCH_SIZE
         self.learning_rate = LEARNING_RATE
