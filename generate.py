@@ -1,7 +1,10 @@
+
 import os
+
 import tensorflow as tf
+
 from network import GANetwork
-from config import NETWORK_FOLDER
+from train import CONFIG
 
 
 def create_session(name):
@@ -9,19 +12,19 @@ def create_session(name):
     session = tf.Session()
     session.run(tf.global_variables_initializer())
     try:
-        saver.restore(session, os.path.join(NETWORK_FOLDER, name))
+        saver.restore(session, os.path.join('network', name))
     except Exception as e:
         print(e)
-        print("No already trained network found (%s)"%os.path.join(NETWORK_FOLDER, name))
+        print("No already trained network found (%s)"%os.path.join('network', name))
         exit()
     return session
 
 def generate(name, amount=1):
-    gan = GANetwork(name)
+    CONFIG['batch_size'] = amount
+    gan = GANetwork(name, **CONFIG)
     session = create_session(name)
     print("Generating %d images using the %s network"%(amount, name))
-    for i in range(amount):
-        gan.generator.generate(session, gan.name+'-'+str(i))
+    gan.generate(session, gan.name, amount)
 
 if __name__ == "__main__":
     if len(os.sys.argv) < 2:
@@ -30,4 +33,3 @@ if __name__ == "__main__":
         generate(os.sys.argv[1])
     else:
         generate(os.sys.argv[1], int(os.sys.argv[2]))
-
