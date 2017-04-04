@@ -130,7 +130,7 @@ class ImageVariations():
         else:
             image.shape = self.image_size, self.image_size
             img = Image.fromarray(np.array(image, dtype=np.uint8), "L")
-        add_time = time.time() - 1500000000
+        add_time = time.time() - 1490000000
         if name is None:
             path = os.path.join(self.out_directory, "%d_test.png"%add_time)
         else:
