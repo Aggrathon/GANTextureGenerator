@@ -208,41 +208,43 @@ class GANetwork():
     def train(self, batches=10000):
         """Train the network for a number of batches (continuing if there is an existing model)"""
         last_save = time = timer()
-        saver = tf.train.Saver()
-        with tf.Session() as session:
-            start_iteration = self.__setup_session__(session, saver) + 1
-            #Train
-            try:
-                for i in range(start_iteration, start_iteration+batches):
-                    d_r_l, d_f_l, d_loss, g_loss, _, _ = session.run(
-                        [self.d_loss_real, self.d_loss_fake, self.discriminator_loss,
-                        self.generator_loss, self.discriminator_solver, self.generator_solver],
-                        feed_dict={
-                            self.image_input: self.image_manager.get_batch(),
-                            self.generator_input: self.random_input(self.batch_size)
-                        }
-                    )
-                    #Track progress
-                    if i%10 == 0:
-                        t = timer() - time
-                        print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
-                                (i, t//3600, t%3600//60, t%60, d_loss, d_r_l, d_f_l, g_loss))
-                        if timer() - last_save > 600:
-                            saver.save(session, os.path.join(self.directory, self.name))
-                            last_save = timer()
-                        if i%500 == 0:
-                            self.generate_grid(session, "%s_%05d"%(self.name, i))
-            finally:
-                saver.save(session, os.path.join(self.directory, self.name))
+        session, saver, start_iteration = self.get_session()
+        try:
+            for i in range(start_iteration+1, start_iteration+batches+1):
+                d_r_l, d_f_l, d_loss, g_loss, _, _ = session.run(
+                    [self.d_loss_real, self.d_loss_fake, self.discriminator_loss,
+                     self.generator_loss, self.discriminator_solver, self.generator_solver],
+                    feed_dict={
+                        self.image_input: self.image_manager.get_batch(),
+                        self.generator_input: self.random_input(self.batch_size)
+                    }
+                )
+                #Track progress
+                if i%10 == 0:
+                    t = timer() - time
+                    print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
+                            (i, t//3600, t%3600//60, t%60, d_loss, d_r_l, d_f_l, g_loss))
+                    if timer() - last_save > 600:
+                        saver.save(session, os.path.join(self.directory, self.name))
+                        last_save = timer()
+                    if i%500 == 0:
+                        self.generate_grid(session, "%s_%05d"%(self.name, i))
+        finally:
+            saver.save(session, os.path.join(self.directory, self.name))
+            session.close()
 
-    def __setup_session__(self, session, saver):
+
+    def get_session(self, create=True):
+        saver = tf.train.Saver()
+        session = tf.Session()
         session.run(tf.global_variables_initializer())
         try:
             saver.restore(session, os.path.join(self.directory, self.name))
             start_iteration = session.run(self.iterations)
-            print("\nTraining an existing network\n")
+            print("\nLoaded an existing network\n")
         except:
             start_iteration = 0
-            tf.summary.FileWriter(os.path.join(LOG_FOLDER, self.name), session.graph)
-            print("\nTraining a new network\n")
-        return start_iteration
+            if create:
+                tf.summary.FileWriter(os.path.join(LOG_FOLDER, self.name), session.graph)
+                print("\nCreated a new network\n")
+        return session, saver, start_iteration
