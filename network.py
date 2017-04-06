@@ -9,12 +9,12 @@ import tensorflow as tf
 from image import ImageVariations
 from operators import *
 
-LOG_FOLDER = 'logs'
+LOG_DIR = 'logs'
 
 class GANetwork():
 
     def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None, 
-                 input_size=128, learning_rate=0.1, dropout=0.4, generator_convolutions=5, generator_base_width=32,
+                 input_size=128, learning_rate=0.01, dropout=0.4, generator_convolutions=5, generator_base_width=32,
                  discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1,
                  grid_size = 5, log=True):
         """
@@ -47,7 +47,6 @@ class GANetwork():
         self.grid_size = min(grid_size, int(math.sqrt(batch_size)))
         #Setup Folders
         os.makedirs(directory, exist_ok=True)
-        os.makedirs(LOG_FOLDER, exist_ok=True)
         #Setup logging
         self.log = log
         #Setup Images
@@ -135,9 +134,9 @@ class GANetwork():
         """Create solvers for the networks"""
         with tf.variable_scope('train'):
             g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
-            g_solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
+            g_solver = tf.train.AdamOptimizer(learning_rate, name='GeneratorAdam').minimize(g_loss, var_list=g_vars, global_step=self.iterations)
             d_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
-            d_solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(d_loss, var_list=d_vars)
+            d_solver = tf.train.AdamOptimizer(learning_rate, name='DiscriminatorAdam').minimize(d_loss, var_list=d_vars)
         return g_solver, d_solver
 
     def image_grid(self, size=5):
@@ -211,13 +210,15 @@ class GANetwork():
         last_save = timer()
         session, saver, start_iteration = self.get_session()
         logger = TBLogger(self, session) if self.log else BasicLogger(self, session)
-        calculations = logger.get_calculations() + [self.generator_solver, self.discriminator_solver]
         try:
             for i in range(start_iteration+1, start_iteration+batches+1):
-                data = session.run(calculations, feed_dict={
-                    self.image_input: self.image_manager.get_batch(),
-                    self.generator_input: self.random_input(self.batch_size)
-                })
+                data = session.run(
+                    logger.get_calculations() + [self.generator_solver, self.discriminator_solver], 
+                    feed_dict={
+                        self.image_input: self.image_manager.get_batch(),
+                        self.generator_input: self.random_input(self.batch_size)
+                    }
+                )
                 #Track progress
                 logger(i, data)
                 if timer() - last_save > 600:
@@ -232,21 +233,23 @@ class GANetwork():
 
 
 class BasicLogger():
-    def __init__(self, network, session):
+    """Log the progress of training to the console and save snapshot images to the ouput folder"""
+    def __init__(self, network, session, loginterval=10):
         self.start_time = timer()
         self.gan = network
         self.session = session
+        self.interval = loginterval
 
-    def get_calculations(self):
+    def get_calculations(self, iteration):
         return [
             self.gan.d_loss_real,
             self.gan.d_loss_fake,
             self.gan.discriminator_loss,
             self.gan.generator_loss
-        ]
+        ] if iteration%self.interval == 0 else []
 
     def __call__(self, iteration, data):
-        if iteration%10 == 0:
+        if iteration%self.interval == 0:
             d_r_l, d_f_l, d_loss, g_loss, _, _ = data
             time = timer() - self.start_time
             print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
@@ -255,16 +258,31 @@ class BasicLogger():
                 self.gan.generate(self.session, "%s_%05d"%(self.gan.name, iteration))
 
 class TBLogger(BasicLogger):
-    def __init__(self, network, session):
-        super().__init__(self, network, session)
-        self.writer = tf.summary.FileWriter(self.gan.logdir, session.graph)
+    """Log the progress of training to tensorboard (and some progress output to the console)"""
+    def __init__(self, network, session, loginterval=100):
+        super().__init__(self, network, session, loginterval)
+        os.makedirs(LOG_DIR, exist_ok=True)
+        self.writer = tf.summary.FileWriter(LOG_DIR, session.graph)
+        self.summary = tf.summary.merge_all()
+        print("Training the GAN on images in the '%s' folder"%self.gan.image_manager.in_directory)
+        print("To stop the training early press Ctrl+C (progress will be saved)")
+        print('To continue training just run the training again')
+        print("To view the progress run 'python -m tensorflow.tensorboard --logdir %s'"%LOG_DIR)
+        print("To generate images using the trained network run 'python generate.py %s'"%self.gan.name)
+        print()
 
-    def get_calculations(self):
-        return tf.summary.merge_all()
+    def get_calculations(self, iteration):
+        return tf.summary.merge_all() if iteration%self.interval == 0 else []
 
     def __call__(self, iteration, data):
-        summary, _, _ = data
-        self.writer.add_summary(summary)
+        if iteration%10 == 0:
+            time = timer() - self.start_time
+            print("Iteration: %04d   Time: %02d:%02d:%02d" % \
+                  (iteration, time//3600, time%3600//60, time%60),
+                  end='\r')
+            if iteration%self.interval == 0:
+                summary, _, _ = data
+                self.writer.add_summary(summary)
 
     def close(self):
         self.writer.close()
