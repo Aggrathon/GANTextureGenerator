@@ -4,9 +4,14 @@ from network import GANetwork
 
 
 CONFIG = {
-    'colors': 1,
-    'batch_size': 16,
-    'generator_base_width': 16
+    'colors': 3,
+    'batch_size': 32,
+    'generator_base_width': 32,
+    'image_size': 128,
+    'discriminator_convolutions': 5,
+    'generator_convolutions': 6,
+    'input_size': 256,
+    'learning_rate': 1.0
 }
 
 

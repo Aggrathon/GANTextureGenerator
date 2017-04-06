@@ -27,3 +27,4 @@
  - Try bigger sizes than 64x64
     - maybe through an upscaling GAN
  - Try making repeatable textures
+ - Denoise? https://www.tensorflow.org/api_docs/python/tf/image/total_variation

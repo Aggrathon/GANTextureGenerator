@@ -57,6 +57,7 @@ class GANetwork():
         self.iterations = tf.Variable(0, name="training_iterations", trainable=False)
         self.generator_input, self.generator_output, self.image_output = \
             self.generator(generator_convolutions, generator_base_width)
+        self.image_grid_output = self.image_grid()
         self.image_input, self.image_logit, self.generated_logit = \
             self.discriminator(self.generator_output, discriminator_convolutions, discriminator_base_width, classification_depth)
         self.generator_loss, self.discriminator_loss, self.d_loss_real, self.d_loss_fake = \
@@ -133,6 +134,40 @@ class GANetwork():
             d_solver = tf.train.AdadeltaOptimizer(learning_rate).minimize(d_loss, var_list=d_vars)
         return g_solver, d_solver
 
+    def image_grid(self, size=5):
+        ms = int(math.sqrt(self.batch_size))
+        if ms < size:
+            size = ms
+        with tf.variable_scope('image_grid'):
+            rows = []
+            for w in range(size):
+                columns = []
+                for h in range(size):
+                    columns.append(self.image_output[w+h*size])
+                rows.append(tf.concat(columns, 0))
+            grid = tf.concat(rows, 1, 'grid')
+            """
+            wh = self.image_size + (size+1)*2
+            grid = tf.Variable(0, trainable=False, expected_shape=[wh, wh, self.colors], name='grid')
+            grid = tf.batch_to_space_nd(
+                self.image_output,
+                [self.image_size, self.image_size],
+                [self.image_size, self.image_size],
+                name='grid'
+            )
+            images = tf.unpack(self.image_output, self.batch_size, 0)
+            rows = []
+            for i in range(size):
+                imgs = []
+                for j in range(size):
+                    img = tf.slice(self.image_output, (j,0,0,0), (1,-1,-1,-1))
+                    img = tf.reshape(img, (self.image_size, self.image_size, self.colors))
+                    imgs.append(img)
+                rows.append(tf.concat(0, imgs))
+            grid = tf.concat(1, rows, name='grid')
+            """
+        return grid
+
 
     def random_input(self, n=1):
         """Creates a random input for the generator"""
@@ -158,6 +193,16 @@ class GANetwork():
                 counter -= self.batch_size
             for i in range(amount):
                 self.image_manager.save_image(images[i], "%s_%02d"%(name, i))
+
+    def generate_grid(self, session, name):
+        """Generate a image and save it"""
+        grid = session.run(
+                self.image_grid_output,
+                feed_dict={self.generator_input: self.random_input(self.batch_size)}
+            )
+        self.image_manager.image_size = self.image_grid_output.get_shape()[1]
+        self.image_manager.save_image(grid, name)
+        self.image_manager.image_size = self.image_size
 
 
     def train(self, batches=10000):
@@ -186,7 +231,7 @@ class GANetwork():
                             saver.save(session, os.path.join(self.directory, self.name))
                             last_save = timer()
                         if i%500 == 0:
-                            self.generate(session, "%s_%05d"%(self.name, i))
+                            self.generate_grid(session, "%s_%05d"%(self.name, i))
             finally:
                 saver.save(session, os.path.join(self.directory, self.name))
 

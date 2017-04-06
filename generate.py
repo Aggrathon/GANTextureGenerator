@@ -26,10 +26,19 @@ def generate(name, amount=1):
     print("Generating %d images using the %s network"%(amount, name))
     gan.generate(session, gan.name, amount)
 
+def generate_grid(name):
+    gan = GANetwork(name, **CONFIG)
+    session = create_session(name)
+    print("Generating a image grid using the %s network"%name)
+    gan.generate_grid(session, gan.name)
+
 if __name__ == "__main__":
     if len(os.sys.argv) < 2:
         generate('default')
     elif len(os.sys.argv) < 3:
         generate(os.sys.argv[1])
     else:
-        generate(os.sys.argv[1], int(os.sys.argv[2]))
+        if os.sys.argv[2] == 'grid':
+            generate_grid(os.sys.argv[1])
+        else:
+            generate(os.sys.argv[1], int(os.sys.argv[2]))
