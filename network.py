@@ -15,7 +15,8 @@ class GANetwork():
 
     def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None, 
                  input_size=128, learning_rate=0.1, dropout=0.4, generator_convolutions=5, generator_base_width=32,
-                 discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1):
+                 discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1,
+                 grid_size = 5, log=True):
         """
         Create a GAN for generating images
         Args:
@@ -33,6 +34,8 @@ class GANetwork():
           discriminator_convolutions: the number of convolutional layers in the discriminator
           discriminator_base_width: the base number of convolution kernels per layer in the discriminator
           classification_depth: the number of fully connected layers in the discriminator
+          grid_size: the size of the grid when generating an image grid
+          log: should tensorboard logs be created
         """
         self.name = name
         self.image_size = image_size
@@ -41,9 +44,12 @@ class GANetwork():
         self.directory = directory
         self.input_size = input_size
         self.dropout = dropout
+        self.grid_size = min(grid_size, int(math.sqrt(batch_size)))
         #Setup Folders
         os.makedirs(directory, exist_ok=True)
         os.makedirs(LOG_FOLDER, exist_ok=True)
+        #Setup logging
+        self.log = log
         #Setup Images
         if image_manager is None:
             self.image_manager = ImageVariations(image_size=image_size, batch_size=batch_size, colored=(colors == 3))
@@ -146,26 +152,6 @@ class GANetwork():
                     columns.append(self.image_output[w+h*size])
                 rows.append(tf.concat(columns, 0))
             grid = tf.concat(rows, 1, 'grid')
-            """
-            wh = self.image_size + (size+1)*2
-            grid = tf.Variable(0, trainable=False, expected_shape=[wh, wh, self.colors], name='grid')
-            grid = tf.batch_to_space_nd(
-                self.image_output,
-                [self.image_size, self.image_size],
-                [self.image_size, self.image_size],
-                name='grid'
-            )
-            images = tf.unpack(self.image_output, self.batch_size, 0)
-            rows = []
-            for i in range(size):
-                imgs = []
-                for j in range(size):
-                    img = tf.slice(self.image_output, (j,0,0,0), (1,-1,-1,-1))
-                    img = tf.reshape(img, (self.image_size, self.image_size, self.colors))
-                    imgs.append(img)
-                rows.append(tf.concat(0, imgs))
-            grid = tf.concat(1, rows, name='grid')
-            """
         return grid
 
 
@@ -205,36 +191,7 @@ class GANetwork():
         self.image_manager.image_size = self.image_size
 
 
-    def train(self, batches=10000):
-        """Train the network for a number of batches (continuing if there is an existing model)"""
-        last_save = time = timer()
-        session, saver, start_iteration = self.get_session()
-        try:
-            for i in range(start_iteration+1, start_iteration+batches+1):
-                d_r_l, d_f_l, d_loss, g_loss, _, _ = session.run(
-                    [self.d_loss_real, self.d_loss_fake, self.discriminator_loss,
-                     self.generator_loss, self.discriminator_solver, self.generator_solver],
-                    feed_dict={
-                        self.image_input: self.image_manager.get_batch(),
-                        self.generator_input: self.random_input(self.batch_size)
-                    }
-                )
-                #Track progress
-                if i%10 == 0:
-                    t = timer() - time
-                    print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
-                            (i, t//3600, t%3600//60, t%60, d_loss, d_r_l, d_f_l, g_loss))
-                    if timer() - last_save > 600:
-                        saver.save(session, os.path.join(self.directory, self.name))
-                        last_save = timer()
-                    if i%500 == 0:
-                        self.generate_grid(session, "%s_%05d"%(self.name, i))
-        finally:
-            saver.save(session, os.path.join(self.directory, self.name))
-            session.close()
-
-
-    def get_session(self, create=True):
+    def get_session(self):
         saver = tf.train.Saver()
         session = tf.Session()
         session.run(tf.global_variables_initializer())
@@ -244,7 +201,72 @@ class GANetwork():
             print("\nLoaded an existing network\n")
         except:
             start_iteration = 0
-            if create:
-                tf.summary.FileWriter(os.path.join(LOG_FOLDER, self.name), session.graph)
+            if self.log:
                 print("\nCreated a new network\n")
         return session, saver, start_iteration
+
+
+    def train(self, batches=10000):
+        """Train the network for a number of batches (continuing if there is an existing model)"""
+        last_save = time = timer()
+        session, saver, start_iteration = self.get_session()
+        logger = TBLogger(self, session) if self.log else BasicLogger(self, session)
+        calculations = logger.get_calculations() + [self.generator_solver, self.discriminator_solver]
+        try:
+            for i in range(start_iteration+1, start_iteration+batches+1):
+                data = session.run(calculations, feed_dict={
+                    self.image_input: self.image_manager.get_batch(),
+                    self.generator_input: self.random_input(self.batch_size)
+                })
+                #Track progress
+                logger(i, data)
+                if timer() - last_save > 600:
+                    saver.save(session, os.path.join(self.directory, self.name))
+                    last_save = timer()
+        finally:
+            saver.save(session, os.path.join(self.directory, self.name))
+            if self.log:
+                logger.close()
+            session.close()
+
+
+
+class BasicLogger():
+    def __init__(self, network, session):
+        self.start_time = timer()
+        self.gan = network
+        self.session = session
+
+    def get_calculations(self):
+        return [
+            self.gan.d_loss_real,
+            self.gan.d_loss_fake,
+            self.gan.discriminator_loss,
+            self.gan.generator_loss
+        ]
+
+    def __call__(self, iteration, data):
+        if iteration%10 == 0:
+            d_r_l, d_f_l, d_loss, g_loss, _, _ = data
+            time = timer() - self.start_time
+            print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
+                    (iteration, time//3600, time%3600//60, time%60, d_loss, d_r_l, d_f_l, g_loss))
+            if iteration%250 == 0:
+                self.gan.generate(self.session, "%s_%05d"%(self.gan.name, iteration))
+
+class TBLogger(BasicLogger):
+    def __init__(self, network, session):
+        super().__init__(self, network, session)
+        self.writer = tf.summary.FileWriter(self.gan.logdir, session.graph)
+
+    def get_calculations(self):
+        return tf.summary.merge_all()
+
+    def __call__(self, iteration, data):
+        summary, _, _ = data
+        self.writer.add_summary(summary)
+
+    def close(self):
+        self.writer.close()
+
+
