@@ -16,7 +16,7 @@ class GANetwork():
     def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None, 
                  input_size=128, learning_rate=0.01, dropout=0.4, generator_convolutions=5, generator_base_width=32,
                  discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1,
-                 grid_size = 5, log=True):
+                 grid_size = 5, log=True, y_offset=0.1):
         """
         Create a GAN for generating images
         Args:
@@ -36,6 +36,7 @@ class GANetwork():
           classification_depth: the number of fully connected layers in the discriminator
           grid_size: the size of the grid when generating an image grid
           log: should tensorboard logs be created
+          y_offset: how much should the "right" answers vary from 1 and 0
         """
         self.name = name
         self.image_size = image_size
@@ -60,13 +61,13 @@ class GANetwork():
         self.image_manager.start_threads()
         #Setup Networks
         self.iterations = tf.Variable(0, name="training_iterations", trainable=False)
-        self.generator_input, self.generator_output, self.image_output = \
+        self.generator_input, self.generator_output = \
             self.generator(generator_convolutions, generator_base_width)
-        self.image_grid_output = self.image_grid()
+        self.image_output, self.image_grid_output = self.setup_output()
         self.image_input, self.image_logit, self.generated_logit = \
             self.discriminator(self.generator_output, discriminator_convolutions, discriminator_base_width, classification_depth)
         self.generator_loss, self.discriminator_loss, self.d_loss_real, self.d_loss_fake = \
-            self.loss_functions(self.image_logit, self.generated_logit)
+            self.loss_functions(self.image_logit, self.generated_logit, y_offset)
         self.generator_solver, self.discriminator_solver = \
             self.solver_functions(self.generator_loss, self.discriminator_loss, learning_rate)
 
@@ -84,9 +85,7 @@ class GANetwork():
             for i in range(conv_layers-1):
                 prev_layer = conv2d_transpose(prev_layer, self.batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)
             output = conv2d_transpose_tanh(prev_layer, self.batch_size, self.colors, 'output')
-            with tf.name_scope("image_output"):
-                image_output = tf.cast((output + 1) * 127.5, tf.uint8)
-        return input, output, image_output
+        return input, output
 
 
     def discriminator(self, generator_output, conv_layers, conv_size, class_layers):
@@ -114,44 +113,66 @@ class GANetwork():
         return real_input, real_output, fake_output
 
 
-    def loss_functions(self, real_logit, fake_logit):
+    def loss_functions(self, real_logit, fake_logit, y_offset=0):
         """Create loss calculations for the networks"""
         with tf.variable_scope('loss'):
             with tf.name_scope('discriminator'):
+                if y_offset < 0.001:
+                    d_r_labels = tf.ones_like(real_logit)
+                    d_f_labels = tf.zeros_like(fake_logit)
+                    g_r_labels = tf.ones_like(fake_logit)
+                else:
+                    d_r_labels = tf.fill(tf.shape(real_logit), (1 - y_offset))
+                    d_f_labels = tf.fill(tf.shape(fake_logit), y_offset)
+                    g_r_labels = tf.fill(tf.shape(fake_logit), (1 - y_offset))
                 real_loss = tf.reduce_mean(
-                    tf.nn.sigmoid_cross_entropy_with_logits(logits=real_logit, labels=tf.ones_like(real_logit)),
+                    tf.nn.sigmoid_cross_entropy_with_logits(logits=real_logit, labels=d_r_labels),
                     name='real_loss')
                 fake_loss = tf.reduce_mean(
-                    tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=tf.zeros_like(fake_logit)),
+                    tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=d_f_labels),
                     name='fake_loss')
                 d_loss = tf.add(real_loss, fake_loss, 'loss')
+                tf.summary.scalar('discriminator_loss', d_loss)
+                tf.summary.scalar('discriminator_fake_loss', fake_loss)
+                tf.summary.scalar('discriminator_real_loss', real_loss)
             with tf.name_scope('generator'):
-                batch_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=tf.ones_like(fake_logit))
+                batch_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=g_r_labels)
                 g_loss = tf.reduce_mean(batch_loss, name='loss')
+                tf.summary.scalar('generator_loss', g_loss)
         return g_loss, d_loss, real_loss, fake_loss
 
     def solver_functions(self, g_loss, d_loss, learning_rate):
         """Create solvers for the networks"""
         with tf.variable_scope('train'):
-            g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
-            g_solver = tf.train.AdamOptimizer(learning_rate, name='GeneratorAdam').minimize(g_loss, var_list=g_vars, global_step=self.iterations)
-            d_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
-            d_solver = tf.train.AdamOptimizer(learning_rate, name='DiscriminatorAdam').minimize(d_loss, var_list=d_vars)
+            with tf.variable_scope('generator'):
+                g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
+                g_solver = tf.train.AdamOptimizer(learning_rate).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
+            with tf.variable_scope('discriminator'):
+                d_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
+                d_solver = tf.train.AdamOptimizer(learning_rate).minimize(d_loss, var_list=d_vars)
         return g_solver, d_solver
 
-    def image_grid(self, size=5):
-        ms = int(math.sqrt(self.batch_size))
-        if ms < size:
-            size = ms
-        with tf.variable_scope('image_grid'):
-            rows = []
-            for w in range(size):
-                columns = []
-                for h in range(size):
-                    columns.append(self.image_output[w+h*size])
-                rows.append(tf.concat(columns, 0))
-            grid = tf.concat(rows, 1, 'grid')
-        return grid
+    def setup_output(self):
+        with tf.name_scope('output'):
+            with tf.name_scope("image_list") as scope:
+                image_output = tf.cast((self.generator_output + 1) * 127.5, tf.uint8, name=scope)
+            with tf.name_scope('image_grid') as scope:
+                wh = self.grid_size * (self.image_size + 2) + 2
+                grid = tf.Variable(0, trainable=False, dtype=tf.uint8, expected_shape=[wh, wh, self.image_size])
+                for x in range(self.grid_size):
+                    for y in range(self.grid_size):
+                        bound = tf.to_int32(tf.image.pad_to_bounding_box(
+                            image_output[x+y*self.grid_size],
+                            2 + x*(self.image_size + 2),
+                            2 + y*(self.image_size + 2),
+                            wh, wh
+                        ))
+                        if x == 0 and y == 0:
+                            grid = bound
+                        else:
+                            grid = tf.add(grid, bound)
+                grid = tf.cast(grid, tf.uint8, name=scope)
+        return image_output, grid
 
 
     def random_input(self, n=1):
@@ -201,6 +222,7 @@ class GANetwork():
         except:
             start_iteration = 0
             if self.log:
+                tf.summary.FileWriter(LOG_DIR, session.graph)
                 print("\nCreated a new network\n")
         return session, saver, start_iteration
 
@@ -211,19 +233,21 @@ class GANetwork():
         session, saver, start_iteration = self.get_session()
         logger = TBLogger(self, session) if self.log else BasicLogger(self, session)
         try:
+            calculations = [self.generator_solver, self.discriminator_solver] + logger.get_calculations()
             for i in range(start_iteration+1, start_iteration+batches+1):
-                data = session.run(
-                    logger.get_calculations() + [self.generator_solver, self.discriminator_solver], 
-                    feed_dict={
-                        self.image_input: self.image_manager.get_batch(),
-                        self.generator_input: self.random_input(self.batch_size)
-                    }
-                )
+                feed_dict = {
+                    self.image_input: self.image_manager.get_batch(),
+                    self.generator_input: self.random_input(self.batch_size)
+                }
+                data = session.run(calculations, feed_dict=feed_dict)
                 #Track progress
-                logger(i, data)
+                logger(i, data, feed_dict)
                 if timer() - last_save > 600:
                     saver.save(session, os.path.join(self.directory, self.name))
                     last_save = timer()
+        except KeyboardInterrupt:
+            print()
+            print("Stopping the training", end='')
         finally:
             saver.save(session, os.path.join(self.directory, self.name))
             if self.log:
@@ -236,19 +260,20 @@ class BasicLogger():
     """Log the progress of training to the console and save snapshot images to the ouput folder"""
     def __init__(self, network, session, loginterval=10):
         self.start_time = timer()
+        self.last_time = self.start_time
         self.gan = network
         self.session = session
         self.interval = loginterval
 
-    def get_calculations(self, iteration):
+    def get_calculations(self):
         return [
             self.gan.d_loss_real,
             self.gan.d_loss_fake,
             self.gan.discriminator_loss,
             self.gan.generator_loss
-        ] if iteration%self.interval == 0 else []
+        ]
 
-    def __call__(self, iteration, data):
+    def __call__(self, iteration, data, dict=None):
         if iteration%self.interval == 0:
             d_r_l, d_f_l, d_loss, g_loss, _, _ = data
             time = timer() - self.start_time
@@ -259,11 +284,13 @@ class BasicLogger():
 
 class TBLogger(BasicLogger):
     """Log the progress of training to tensorboard (and some progress output to the console)"""
-    def __init__(self, network, session, loginterval=100):
-        super().__init__(self, network, session, loginterval)
+    def __init__(self, network, session, loginterval=10):
+        super().__init__(network, session, loginterval)
+        self.image_interval = loginterval*10
         os.makedirs(LOG_DIR, exist_ok=True)
-        self.writer = tf.summary.FileWriter(LOG_DIR, session.graph)
+        self.writer = tf.summary.FileWriter(LOG_DIR)
         self.summary = tf.summary.merge_all()
+        self.batch_input = network.random_input(network.batch_size)
         print("Training the GAN on images in the '%s' folder"%self.gan.image_manager.in_directory)
         print("To stop the training early press Ctrl+C (progress will be saved)")
         print('To continue training just run the training again')
@@ -271,20 +298,38 @@ class TBLogger(BasicLogger):
         print("To generate images using the trained network run 'python generate.py %s'"%self.gan.name)
         print()
 
-    def get_calculations(self, iteration):
-        return tf.summary.merge_all() if iteration%self.interval == 0 else []
+    def get_calculations(self):
+        return []
 
-    def __call__(self, iteration, data):
-        if iteration%10 == 0:
-            time = timer() - self.start_time
-            print("Iteration: %04d   Time: %02d:%02d:%02d" % \
-                  (iteration, time//3600, time%3600//60, time%60),
+    def __call__(self, iteration, data, dict=None):
+        if iteration%self.interval == 0:
+            #Print progress
+            curr_time = timer()
+            time_per = (curr_time-self.last_time)/self.interval
+            time = curr_time - self.start_time
+            print("Iteration: %04d   Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
+                  (iteration, time//3600, time%3600//60, time%60, time_per),
                   end='\r')
-            if iteration%self.interval == 0:
-                summary, _, _ = data
-                self.writer.add_summary(summary)
+            #Save image
+            if iteration%self.image_interval == 0:
+                #Hack to make tensorboard show multiple images, not just the latest one
+                image = self.session.run(
+                    tf.summary.image(
+                        'training/iteration-%d'%iteration,
+                        tf.stack([self.gan.image_grid_output]),
+                        max_outputs=1,
+                        collections=['generated_images']
+                    ),
+                    feed_dict={self.gan.generator_input: self.batch_input}
+                )
+                self.writer.add_summary(image, iteration)
+            #Save summary
+            summary = self.session.run(self.summary, feed_dict=dict)
+            self.writer.add_summary(summary, iteration)
+            self.last_time = timer()
 
     def close(self):
         self.writer.close()
+        print()
 
 
