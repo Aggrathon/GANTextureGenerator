@@ -17,7 +17,8 @@ CONFIG = {
 
 if __name__ == '__main__':
     if len(os.sys.argv) < 2:
-        GANetwork('default', **CONFIG).train()
+        print('Usage:')
+        print('  python %s network_name [num_iterations]\t- Trains a network on the images in the input folder'%os.sys.argv[0])
     elif len(os.sys.argv) < 3:
         GANetwork(os.sys.argv[1], **CONFIG).train()
     else:

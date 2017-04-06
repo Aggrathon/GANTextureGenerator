@@ -206,9 +206,9 @@ class GANetwork():
         return session, saver, start_iteration
 
 
-    def train(self, batches=10000):
+    def train(self, batches=100000):
         """Train the network for a number of batches (continuing if there is an existing model)"""
-        last_save = time = timer()
+        last_save = timer()
         session, saver, start_iteration = self.get_session()
         logger = TBLogger(self, session) if self.log else BasicLogger(self, session)
         calculations = logger.get_calculations() + [self.generator_solver, self.discriminator_solver]

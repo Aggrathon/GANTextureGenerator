@@ -35,7 +35,9 @@ def generate_grid(name, size=5):
 
 if __name__ == "__main__":
     if len(os.sys.argv) < 2:
-        generate('default')
+        print('Usage:')
+        print('  python %s network_name [num_images]\t- Generates images to the output folder'%os.sys.argv[0])
+        print('  python %s network_name [grid]\t- Generates an image grid to the output folder'%os.sys.argv[0])
     elif len(os.sys.argv) < 3:
         generate(os.sys.argv[1])
     else:
