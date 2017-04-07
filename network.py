@@ -14,9 +14,9 @@ LOG_DIR = 'logs'
 class GANetwork():
 
     def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None, 
-                 input_size=128, learning_rate=0.01, dropout=0.4, generator_convolutions=5, generator_base_width=32,
+                 input_size=128, learning_rate=0.001, dropout=0.4, generator_convolutions=5, generator_base_width=32,
                  discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1,
-                 grid_size = 5, log=True, y_offset=0.1):
+                 grid_size=4, log=True, y_offset=0.1):
         """
         Create a GAN for generating images
         Args:
@@ -61,11 +61,16 @@ class GANetwork():
         self.image_manager.start_threads()
         #Setup Networks
         self.iterations = tf.Variable(0, name="training_iterations", trainable=False)
-        self.generator_input, self.generator_output = \
-            self.generator(generator_convolutions, generator_base_width)
-        self.image_output, self.image_grid_output = self.setup_output()
-        self.image_input, self.image_logit, self.generated_logit = \
-            self.discriminator(self.generator_output, discriminator_convolutions, discriminator_base_width, classification_depth)
+        #Generator
+        self.input = self.generator_output = None
+        self.generator(generator_convolutions, generator_base_width)
+        #Generated output
+        self.image_output = self.image_grid_output = None
+        self.setup_output()
+        #Discriminator
+        self.image_input = self.image_logit = self.generated_logit = None
+        self.discriminator(self.generator_output, discriminator_convolutions, discriminator_base_width, classification_depth)
+        #Losses and Solvers
         self.generator_loss, self.discriminator_loss, self.d_loss_real, self.d_loss_fake = \
             self.loss_functions(self.image_logit, self.generated_logit, y_offset)
         self.generator_solver, self.discriminator_solver = \
@@ -79,13 +84,33 @@ class GANetwork():
             conv_image_size = self.image_size // (2**conv_layers)
             assert conv_image_size*(2**conv_layers) == self.image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
             #Input Layers
-            input = tf.placeholder(tf.float32, [None, self.input_size], name='input')
-            prev_layer = expand_relu(input, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)], 'expand')
+            self.input = tf.placeholder(tf.float32, [None, self.input_size], name='input')
+            prev_layer = expand_relu(self.input, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)], 'expand')
             #Conv layers
             for i in range(conv_layers-1):
                 prev_layer = conv2d_transpose(prev_layer, self.batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)
-            output = conv2d_transpose_tanh(prev_layer, self.batch_size, self.colors, 'output')
-        return input, output
+            self.generator_output = conv2d_transpose_tanh(prev_layer, self.batch_size, self.colors, 'output')
+
+    def setup_output(self):
+        with tf.name_scope('output'):
+            with tf.name_scope("image_list") as scope:
+                self.image_output = tf.cast((self.generator_output + 1) * 127.5, tf.uint8, name=scope)
+            with tf.name_scope('image_grid') as scope:
+                wh = self.grid_size * (self.image_size + 2) + 2
+                grid = tf.Variable(0, trainable=False, dtype=tf.uint8, expected_shape=[wh, wh, self.image_size])
+                for x in range(self.grid_size):
+                    for y in range(self.grid_size):
+                        bound = tf.to_int32(tf.image.pad_to_bounding_box(
+                            self.image_output[x+y*self.grid_size],
+                            2 + x*(self.image_size + 2),
+                            2 + y*(self.image_size + 2),
+                            wh, wh
+                        ))
+                        if x == 0 and y == 0:
+                            grid = bound
+                        else:
+                            grid = tf.add(grid, bound)
+                self.image_grid_output = tf.cast(grid, tf.uint8, name=scope)
 
 
     def discriminator(self, generator_output, conv_layers, conv_size, class_layers):
@@ -93,24 +118,23 @@ class GANetwork():
         image_size = self.image_size
         with tf.variable_scope('discriminator') as scope:
             with tf.variable_scope('real_input'):
-                real_input = tf.placeholder(tf.uint8, shape=[None, image_size, image_size, self.colors], name='image_input')
-                real_input_scaled = tf.subtract(tf.to_float(real_input)/127.5, 1, name='scaling')
+                self.image_input = tf.placeholder(tf.uint8, shape=[None, image_size, image_size, self.colors], name='image_input')
+                real_input_scaled = tf.subtract(tf.to_float(self.image_input)/127.5, 1, name='scaling')
             conv_output_size = ((image_size//(2**conv_layers))**2) * conv_size * conv_layers
             class_output_size = 2**int(math.log(conv_output_size//2, 2))
             #Create Layers
-            def create_network(layer):
+            def create_network(layer, summary=True):
                 #Convolutional layers
                 for i in range(conv_layers):
-                    layer = conv2d(layer, conv_size*(i+1), name='convolution_%d'%i, norm=(i != 0))
+                    layer = conv2d(layer, conv_size*(i+1), name='convolution_%d'%i, norm=(i != 0), summary=summary)
                 layer = tf.reshape(layer, [-1, conv_output_size])
                 #Classification layers
                 for i in range(class_layers):
-                    layer = relu_dropout(layer, class_output_size, self.dropout, 'classification_%d'%i)
-                return linear(layer, 1, 'output')
-            fake_output = create_network(generator_output)
+                    layer = relu_dropout(layer, class_output_size, self.dropout, 'classification_%d'%i, summary=summary)
+                return linear(layer, 1, 'output', summary=summary)
+            self.generated_logit = create_network(generator_output)
             scope.reuse_variables()
-            real_output = create_network(real_input_scaled)
-        return real_input, real_output, fake_output
+            self.image_logit = create_network(real_input_scaled, False)
 
 
     def loss_functions(self, real_logit, fake_logit, y_offset=0):
@@ -133,8 +157,8 @@ class GANetwork():
                     name='fake_loss')
                 d_loss = tf.add(real_loss, fake_loss, 'loss')
                 tf.summary.scalar('discriminator_loss', d_loss)
-                tf.summary.scalar('discriminator_fake_loss', fake_loss)
-                tf.summary.scalar('discriminator_real_loss', real_loss)
+                tf.summary.scalar('fake_loss', fake_loss)
+                tf.summary.scalar('real_loss', real_loss)
             with tf.name_scope('generator'):
                 batch_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=g_r_labels)
                 g_loss = tf.reduce_mean(batch_loss, name='loss')
@@ -152,28 +176,6 @@ class GANetwork():
                 d_solver = tf.train.AdamOptimizer(learning_rate).minimize(d_loss, var_list=d_vars)
         return g_solver, d_solver
 
-    def setup_output(self):
-        with tf.name_scope('output'):
-            with tf.name_scope("image_list") as scope:
-                image_output = tf.cast((self.generator_output + 1) * 127.5, tf.uint8, name=scope)
-            with tf.name_scope('image_grid') as scope:
-                wh = self.grid_size * (self.image_size + 2) + 2
-                grid = tf.Variable(0, trainable=False, dtype=tf.uint8, expected_shape=[wh, wh, self.image_size])
-                for x in range(self.grid_size):
-                    for y in range(self.grid_size):
-                        bound = tf.to_int32(tf.image.pad_to_bounding_box(
-                            image_output[x+y*self.grid_size],
-                            2 + x*(self.image_size + 2),
-                            2 + y*(self.image_size + 2),
-                            wh, wh
-                        ))
-                        if x == 0 and y == 0:
-                            grid = bound
-                        else:
-                            grid = tf.add(grid, bound)
-                grid = tf.cast(grid, tf.uint8, name=scope)
-        return image_output, grid
-
 
     def random_input(self, n=1):
         """Creates a random input for the generator"""
@@ -185,7 +187,7 @@ class GANetwork():
         def get_arr():
             arr = np.asarray(session.run(
                 self.image_output,
-                feed_dict={self.generator_input: self.random_input(self.batch_size)}
+                feed_dict={self.input: self.random_input(self.batch_size)}
             ), np.uint8)
             arr.shape = self.batch_size, self.image_size, self.image_size, self.colors
             return arr
@@ -204,7 +206,7 @@ class GANetwork():
         """Generate a image and save it"""
         grid = session.run(
                 self.image_grid_output,
-                feed_dict={self.generator_input: self.random_input(self.batch_size)}
+                feed_dict={self.input: self.random_input(self.batch_size)}
             )
         self.image_manager.image_size = self.image_grid_output.get_shape()[1]
         self.image_manager.save_image(grid, name)
@@ -222,7 +224,7 @@ class GANetwork():
         except:
             start_iteration = 0
             if self.log:
-                tf.summary.FileWriter(LOG_DIR, session.graph)
+                tf.summary.FileWriter(os.path.join(LOG_DIR, self.name), session.graph)
                 print("\nCreated a new network\n")
         return session, saver, start_iteration
 
@@ -237,7 +239,7 @@ class GANetwork():
             for i in range(start_iteration+1, start_iteration+batches+1):
                 feed_dict = {
                     self.image_input: self.image_manager.get_batch(),
-                    self.generator_input: self.random_input(self.batch_size)
+                    self.input: self.random_input(self.batch_size)
                 }
                 data = session.run(calculations, feed_dict=feed_dict)
                 #Track progress
@@ -286,9 +288,9 @@ class TBLogger(BasicLogger):
     """Log the progress of training to tensorboard (and some progress output to the console)"""
     def __init__(self, network, session, loginterval=10):
         super().__init__(network, session, loginterval)
-        self.image_interval = loginterval*10
+        self.image_interval = loginterval*100
         os.makedirs(LOG_DIR, exist_ok=True)
-        self.writer = tf.summary.FileWriter(LOG_DIR)
+        self.writer = tf.summary.FileWriter(os.path.join(LOG_DIR, network.name))
         self.summary = tf.summary.merge_all()
         self.batch_input = network.random_input(network.batch_size)
         print("Training the GAN on images in the '%s' folder"%self.gan.image_manager.in_directory)
@@ -307,25 +309,28 @@ class TBLogger(BasicLogger):
             curr_time = timer()
             time_per = (curr_time-self.last_time)/self.interval
             time = curr_time - self.start_time
-            print("Iteration: %04d   Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
+            print("Iteration: %04d    Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
                   (iteration, time//3600, time%3600//60, time%60, time_per),
                   end='\r')
             #Save image
             if iteration%self.image_interval == 0:
                 #Hack to make tensorboard show multiple images, not just the latest one
-                image = self.session.run(
-                    tf.summary.image(
-                        'training/iteration-%d'%iteration,
+                dict[self.gan.input] = self.batch_input
+                image, summary = self.session.run(
+                    [tf.summary.image(
+                        'training/iteration/%d'%iteration,
                         tf.stack([self.gan.image_grid_output]),
                         max_outputs=1,
                         collections=['generated_images']
-                    ),
-                    feed_dict={self.gan.generator_input: self.batch_input}
+                    ), self.summary],
+                    feed_dict=dict
                 )
                 self.writer.add_summary(image, iteration)
-            #Save summary
-            summary = self.session.run(self.summary, feed_dict=dict)
-            self.writer.add_summary(summary, iteration)
+                self.writer.add_summary(summary, iteration)
+            else:
+                #Save summary
+                summary = self.session.run(self.summary, feed_dict=dict)
+                self.writer.add_summary(summary, iteration)
             self.last_time = timer()
 
     def close(self):

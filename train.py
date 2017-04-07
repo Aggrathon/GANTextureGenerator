@@ -9,7 +9,7 @@ CONFIG = {
     'generator_base_width': 32,
     'image_size': 64,
     'discriminator_convolutions': 4,
-    'generator_convolutions': 4,
+    'generator_convolutions': 5,
     'input_size': 128
 }
 
