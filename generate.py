@@ -7,19 +7,26 @@ from network import GANetwork
 from train import CONFIG
 
 
+def get_config(batch):
+    config = CONFIG
+    config['batch_size'] = batch
+    config['log'] = False
+    config['grid_size'] = int(batch**0.5)
+    return config
+
+
 def generate(name, amount=1):
-    CONFIG['batch_size'] = amount
-    gan = GANetwork(name, **CONFIG)
-    session, _, iter = gan.get_session(create=False)
+    gan = GANetwork(name, **get_config(amount))
+    session, _, iter = gan.get_session()
     if iter == 0:
         print("No already trained network found (%s)"%name)
         return
     print("Generating %d images using the %s network"%(amount, name))
     gan.generate(session, gan.name, amount)
 
-def generate_grid(name):
-    gan = GANetwork(name, **CONFIG)
-    session, _, iter = gan.get_session(create=False)
+def generate_grid(name, size=5):
+    gan = GANetwork(name, **get_config(size*size))
+    session, _, iter = gan.get_session()
     if iter == 0:
         print("No already trained network found (%s)"%name)
         return
@@ -28,7 +35,9 @@ def generate_grid(name):
 
 if __name__ == "__main__":
     if len(os.sys.argv) < 2:
-        generate('default')
+        print('Usage:')
+        print('  python %s network_name [num_images]\t- Generates images to the output folder'%os.sys.argv[0])
+        print('  python %s network_name [grid]\t- Generates an image grid to the output folder'%os.sys.argv[0])
     elif len(os.sys.argv) < 3:
         generate(os.sys.argv[1])
     else:
