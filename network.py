@@ -14,9 +14,9 @@ LOG_DIR = 'logs'
 class GANetwork():
 
     def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None, 
-                 input_size=128, learning_rate=0.001, dropout=0.4, generator_convolutions=5, generator_base_width=32,
+                 input_size=128, learning_rate=0.0002, dropout=0.4, generator_convolutions=5, generator_base_width=32,
                  discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1,
-                 grid_size=4, log=True, y_offset=0.1):
+                 grid_size=4, log=True, y_offset=0.1, learning_momentum=0.5, learning_momentum2=0.85):
         """
         Create a GAN for generating images
         Args:
@@ -36,7 +36,9 @@ class GANetwork():
           classification_depth: the number of fully connected layers in the discriminator
           grid_size: the size of the grid when generating an image grid
           log: should tensorboard logs be created
-          y_offset: how much should the "right" answers vary from 1 and 0
+          y_offset: how much should the "right" answers vary from 1s and 0s
+          learning_momentum: the beta1 momentum for ADAM
+          learning_momentum2: the beta2 momentum for ADAM
         """
         self.name = name
         self.image_size = image_size
@@ -46,9 +48,6 @@ class GANetwork():
         self.input_size = input_size
         self.dropout = dropout
         self.grid_size = min(grid_size, int(math.sqrt(batch_size)))
-        #Setup Folders
-        os.makedirs(directory, exist_ok=True)
-        #Setup logging
         self.log = log
         #Setup Images
         if image_manager is None:
@@ -61,6 +60,7 @@ class GANetwork():
         self.image_manager.start_threads()
         #Setup Networks
         self.iterations = tf.Variable(0, name="training_iterations", trainable=False)
+        os.makedirs(directory, exist_ok=True)
         #Generator
         self.input = self.generator_output = None
         self.generator(generator_convolutions, generator_base_width)
@@ -69,12 +69,13 @@ class GANetwork():
         self.setup_output()
         #Discriminator
         self.image_input = self.image_logit = self.generated_logit = None
+        self.variation_updater = self.image_variation = None
         self.discriminator(self.generator_output, discriminator_convolutions, discriminator_base_width, classification_depth)
         #Losses and Solvers
         self.generator_loss, self.discriminator_loss, self.d_loss_real, self.d_loss_fake = \
             self.loss_functions(self.image_logit, self.generated_logit, y_offset)
         self.generator_solver, self.discriminator_solver = \
-            self.solver_functions(self.generator_loss, self.discriminator_loss, learning_rate)
+            self.solver_functions(self.generator_loss, self.discriminator_loss, learning_rate, learning_momentum, learning_momentum2)
 
 
     def generator(self, conv_layers, conv_size):
@@ -135,6 +136,22 @@ class GANetwork():
             self.generated_logit = create_network(generator_output)
             scope.reuse_variables()
             self.image_logit = create_network(real_input_scaled, False)
+        if self.log:
+            with tf.variable_scope('pixel_variation'):
+                #Pixel Variations
+                img_tot_var = tf.image.total_variation(real_input_scaled)
+                gen_tot_var = tf.image.total_variation(generator_output)
+                image_variation = tf.reduce_sum(img_tot_var)
+                gener_variation = tf.reduce_sum(gen_tot_var)
+                tf.summary.histogram('images', img_tot_var)
+                tf.summary.histogram('generated', gen_tot_var)
+                tf.summary.scalar('images', image_variation)
+                tf.summary.scalar('generated', gener_variation)
+                ema = tf.train.ExponentialMovingAverage(decay=0.95, num_updates=self.iterations)
+                ema_apply = ema.apply([image_variation])
+                self.variation_updater = tf.group(ema_apply)
+                self.image_variation = ema.average(image_variation)
+                tf.summary.scalar('images_averaged', self.image_variation)
 
 
     def loss_functions(self, real_logit, fake_logit, y_offset=0):
@@ -165,15 +182,15 @@ class GANetwork():
                 tf.summary.scalar('generator_loss', g_loss)
         return g_loss, d_loss, real_loss, fake_loss
 
-    def solver_functions(self, g_loss, d_loss, learning_rate):
+    def solver_functions(self, g_loss, d_loss, learning_rate, learning_momentum, learning_momentum2=0.7):
         """Create solvers for the networks"""
         with tf.variable_scope('train'):
             with tf.variable_scope('generator'):
                 g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
-                g_solver = tf.train.AdamOptimizer(learning_rate).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
+                g_solver = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
             with tf.variable_scope('discriminator'):
                 d_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
-                d_solver = tf.train.AdamOptimizer(learning_rate).minimize(d_loss, var_list=d_vars)
+                d_solver = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2).minimize(d_loss, var_list=d_vars)
         return g_solver, d_solver
 
 
@@ -205,9 +222,9 @@ class GANetwork():
     def generate_grid(self, session, name):
         """Generate a image and save it"""
         grid = session.run(
-                self.image_grid_output,
-                feed_dict={self.input: self.random_input(self.batch_size)}
-            )
+            self.image_grid_output,
+            feed_dict={self.input: self.random_input(self.batch_size)}
+        )
         self.image_manager.image_size = self.image_grid_output.get_shape()[1]
         self.image_manager.save_image(grid, name)
         self.image_manager.image_size = self.image_size
@@ -221,11 +238,11 @@ class GANetwork():
             saver.restore(session, os.path.join(self.directory, self.name))
             start_iteration = session.run(self.iterations)
             print("\nLoaded an existing network\n")
-        except:
+        except Exception as e:
             start_iteration = 0
             if self.log:
                 tf.summary.FileWriter(os.path.join(LOG_DIR, self.name), session.graph)
-                print("\nCreated a new network\n")
+                print("\nCreated a new network (%s)\n"%repr(e))
         return session, saver, start_iteration
 
 
@@ -277,7 +294,7 @@ class BasicLogger():
 
     def __call__(self, iteration, data, dict=None):
         if iteration%self.interval == 0:
-            d_r_l, d_f_l, d_loss, g_loss, _, _ = data
+            d_r_l, d_f_l, d_loss, g_loss = data[-4:]
             time = timer() - self.start_time
             print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
                     (iteration, time//3600, time%3600//60, time%60, d_loss, d_r_l, d_f_l, g_loss))
@@ -301,7 +318,7 @@ class TBLogger(BasicLogger):
         print()
 
     def get_calculations(self):
-        return []
+        return [self.gan.variation_updater]
 
     def __call__(self, iteration, data, dict=None):
         if iteration%self.interval == 0:
