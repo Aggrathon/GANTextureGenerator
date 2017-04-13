@@ -14,9 +14,9 @@ LOG_DIR = 'logs'
 class GANetwork():
 
     def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None, 
-                 input_size=128, learning_rate=0.0002, dropout=0.4, generator_convolutions=5, generator_base_width=32,
-                 discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1,
-                 grid_size=4, log=True, y_offset=0.1, learning_momentum=0.5, learning_momentum2=0.85):
+                 input_size=128, learning_rate=0.0001, dropout=0.4, generator_convolutions=5, generator_base_width=32,
+                 discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1, grid_size=4, 
+                 log=True, y_offset=0.1, learning_momentum=0.6, learning_momentum2=0.9):
         """
         Create a GAN for generating images
         Args:
@@ -187,7 +187,7 @@ class GANetwork():
         with tf.variable_scope('train'):
             with tf.variable_scope('generator'):
                 g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
-                g_solver = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
+                g_solver = tf.train.AdamOptimizer(learning_rate*2, learning_momentum, learning_momentum2).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
             with tf.variable_scope('discriminator'):
                 d_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
                 d_solver = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2).minimize(d_loss, var_list=d_vars)
