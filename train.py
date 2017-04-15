@@ -5,7 +5,7 @@ from network import GANetwork
 
 CONFIG = {
     'colors': 3,
-    'batch_size': 64,
+    'batch_size': 128,
     'generator_base_width': 16,
     'image_size': 64,
     'discriminator_convolutions': 4,
