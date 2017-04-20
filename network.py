@@ -238,7 +238,7 @@ class GANetwork():
             saver.restore(session, os.path.join(self.directory, self.name))
             start_iteration = session.run(self.iterations)
             print("\nLoaded an existing network\n")
-        except Exception as e:
+        except Exception:
             start_iteration = 0
             if self.log:
                 tf.summary.FileWriter(os.path.join(LOG_DIR, self.name), session.graph)
@@ -246,21 +246,39 @@ class GANetwork():
         return session, saver, start_iteration
 
 
-    def train(self, batches=100000):
+    def train(self, batches=100000, print_interval=1):
         """Train the network for a number of batches (continuing if there is an existing model)"""
-        last_save = timer()
+        start_time = last_time = last_save = timer()
         session, saver, start_iteration = self.get_session()
-        logger = TBLogger(self, session) if self.log else BasicLogger(self, session)
+        calculations = [self.generator_solver, self.discriminator_solver] 
+        if self.log:
+            logger = SummaryLogger(self, session)
+            calculations += logger.get_calculations()
         try:
-            calculations = [self.generator_solver, self.discriminator_solver] + logger.get_calculations()
-            for i in range(start_iteration+1, start_iteration+batches+1):
+            print("Training the GAN on images in the '%s' folder"%self.image_manager.in_directory)
+            print("To stop the training early press Ctrl+C (progress will be saved)")
+            print('To continue training just run the training again')
+            if self.log:
+                print("To view the progress run 'python -m tensorflow.tensorboard --logdir %s'"%LOG_DIR)
+            print("To generate images using the trained network run 'python generate.py %s'"%self.name)
+            print()
+            for i in range(start_iteration, start_iteration+batches+1):
                 feed_dict = {
                     self.image_input: self.image_manager.get_batch(),
                     self.input: self.random_input(self.batch_size)
                 }
-                data = session.run(calculations, feed_dict=feed_dict)
-                #Track progress
-                logger(i, data, feed_dict)
+                session.run(calculations, feed_dict=feed_dict)
+                #Print progress
+                if i%print_interval == 0:
+                    curr_time = timer()
+                    time_per = (curr_time-last_time)/print_interval
+                    time = curr_time - start_time
+                    print("Iteration: %04d    Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
+                        (i, time//3600, time%3600//60, time%60, time_per), end='\r')
+                    last_time = curr_time
+                if self.log:
+                    logger(i, feed_dict)
+                #Save network
                 if timer() - last_save > 1800:
                     saver.save(session, os.path.join(self.directory, self.name))
                     last_save = timer()
@@ -274,85 +292,42 @@ class GANetwork():
             session.close()
 
 
-
-class BasicLogger():
-    """Log the progress of training to the console and save snapshot images to the ouput folder"""
-    def __init__(self, network, session, loginterval=10):
-        self.start_time = timer()
-        self.last_time = self.start_time
-        self.gan = network
-        self.session = session
-        self.interval = loginterval
-
-    def get_calculations(self):
-        return [
-            self.gan.d_loss_real,
-            self.gan.d_loss_fake,
-            self.gan.discriminator_loss,
-            self.gan.generator_loss
-        ]
-
-    def __call__(self, iteration, data, dict=None):
-        if iteration%self.interval == 0:
-            d_r_l, d_f_l, d_loss, g_loss = data[-4:]
-            time = timer() - self.start_time
-            print("Iteration: %04d   Time: %02d:%02d:%02d    \tD loss: %.2f (%.2f | %.2f) \tG loss: %.2f" % \
-                    (iteration, time//3600, time%3600//60, time%60, d_loss, d_r_l, d_f_l, g_loss))
-            if iteration%250 == 0:
-                self.gan.generate(self.session, "%s_%05d"%(self.gan.name, iteration))
-
-class TBLogger(BasicLogger):
+class SummaryLogger():
     """Log the progress of training to tensorboard (and some progress output to the console)"""
-    def __init__(self, network, session, loginterval=1):
-        super().__init__(network, session, loginterval)
-        self.image_interval = loginterval*500
-        self.summary_interval = 10*loginterval
+    def __init__(self, network, session, summary_interval=20, image_interval=500):
+        self.session = session
+        self.gan = network
+        self.image_interval = image_interval
+        self.summary_interval = summary_interval
         os.makedirs(LOG_DIR, exist_ok=True)
         self.writer = tf.summary.FileWriter(os.path.join(LOG_DIR, network.name))
         self.summary = tf.summary.merge_all()
         self.batch_input = network.random_input(network.batch_size)
-        print("Training the GAN on images in the '%s' folder"%self.gan.image_manager.in_directory)
-        print("To stop the training early press Ctrl+C (progress will be saved)")
-        print('To continue training just run the training again')
-        print("To view the progress run 'python -m tensorflow.tensorboard --logdir %s'"%LOG_DIR)
-        print("To generate images using the trained network run 'python generate.py %s'"%self.gan.name)
-        print()
 
     def get_calculations(self):
         return [self.gan.variation_updater]
 
-    def __call__(self, iteration, data, dict=None):
-        if iteration%self.interval == 0:
-            #Print progress
-            curr_time = timer()
-            time_per = (curr_time-self.last_time)/self.interval
-            time = curr_time - self.start_time
-            print("Iteration: %04d    Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
-                  (iteration, time//3600, time%3600//60, time%60, time_per),
-                  end='\r')
-            #Save image
-            if iteration%self.image_interval == 0:
-                #Hack to make tensorboard show multiple images, not just the latest one
-                dict[self.gan.input] = self.batch_input
-                image, summary = self.session.run(
-                    [tf.summary.image(
-                        'training/iteration/%d'%iteration,
-                        tf.stack([self.gan.image_grid_output]),
-                        max_outputs=1,
-                        collections=['generated_images']
-                    ), self.summary],
-                    feed_dict=dict
-                )
-                self.writer.add_summary(image, iteration)
-                self.writer.add_summary(summary, iteration)
-            elif iteration%self.summary_interval == 0:
-                #Save summary
-                summary = self.session.run(self.summary, feed_dict=dict)
-                self.writer.add_summary(summary, iteration)
-            self.last_time = timer()
+    def __call__(self, iteration, dict=None):
+        #Save image
+        if iteration%self.image_interval == 0:
+            #Hack to make tensorboard show multiple images, not just the latest one
+            dict[self.gan.input] = self.batch_input
+            image, summary = self.session.run(
+                [tf.summary.image(
+                    'training/iteration/%d'%iteration,
+                    tf.stack([self.gan.image_grid_output]),
+                    max_outputs=1,
+                    collections=['generated_images']
+                ), self.summary],
+                feed_dict=dict
+            )
+            self.writer.add_summary(image, iteration)
+            self.writer.add_summary(summary, iteration)
+        elif iteration%self.summary_interval == 0:
+            #Save summary
+            summary = self.session.run(self.summary, feed_dict=dict)
+            self.writer.add_summary(summary, iteration)
 
     def close(self):
         self.writer.close()
         print()
-
-
