@@ -13,16 +13,18 @@ from queue import Queue
 
 class ImageVariations():
     def __init__(self, image_size=64, batch_size=64, colored=True,
-                 in_memory=True, in_directory='input', out_directory='output',
+                 pools=8, pool_renew=1,
+                 in_directory='input', out_directory='output',
                  rotation_range=(-20, 20), brightness_range=(0.7, 1.2),
                  saturation_range=(0.7, 1.), contrast_range=(0.9, 1.3),
                  size_range=(1.0, 0.8)):
         #Parameters
         self.image_size = image_size
-        self.in_memory = in_memory
         self.batch_size = batch_size
         self.in_directory = in_directory
         self.out_directory = out_directory
+        self.pools = pools
+        self.pool_renew = pool_renew
         #Variation Config
         self.rotation_range = rotation_range
         self.brightness_range = brightness_range
@@ -31,6 +33,9 @@ class ImageVariations():
         self.size_range = size_range
         self.colored = colored
         #Thread variables
+        self.pool = []
+        self.pool_index = 0
+        self.pool_iteration = 0
         self.queue = Queue()
         self.files = []
         self.threads = []
@@ -51,6 +56,7 @@ class ImageVariations():
         self.closing = False
         for t in self.threads:
             t.start()
+        self.pool = [[self.queue.get() for _ in range(self.batch_size)] for _ in range(self.pools)]
 
     def stop_threads(self):
         """Stop the threads that are generating image variations (freeing memory)"""
@@ -62,26 +68,25 @@ class ImageVariations():
         if self.closing:
             self.start_threads()
         self.event.set()
-        images = [self.queue.get() for i in range(self.batch_size)]
+        images = self.pool[self.pool_index]
+        for i in range(self.pool_renew):
+            self.pool[self.pool_index][(self.pool_iteration+i)%self.batch_size] = self.queue.get()
+        self.pool_index += 1
+        if self.pool_index == self.pools:
+            self.pool_index = 0
+            self.pool_iteration = (self.pool_iteration+self.pool_renew)%self.batch_size
         self.event.clear()
         return images
 
     def __thread__(self, files):
-        if self.in_memory:
-            if self.colored:
-                images = [Image.open(os.path.join(self.in_directory, file)) for file in files]
-            else:
-                images = [Image.open(os.path.join(self.in_directory, file)).convert("L") for file in files]
+        if self.colored:
+            images = [Image.open(os.path.join(self.in_directory, file)) for file in files]
+        else:
+            images = [Image.open(os.path.join(self.in_directory, file)).convert("L") for file in files]
         index = 0
         while not self.closing:
-            if self.in_memory:
-                image = images[index]
-                index = (index+1)%len(images)
-            else:
-                image = Image.open(os.path.join(self.in_directory, files[index]))
-                index = (index+1)%len(files)
-                if not self.colored:
-                    image = image.convert("L")
+            image = images[index]
+            index = (index+1)%len(images)
             arr = np.asarray(self.get_variation(image), dtype=np.float)
             if not self.colored:
                 arr.shape = arr.shape+(1,)
@@ -137,17 +142,17 @@ class ImageVariations():
 
 if __name__ == "__main__":
     if len(os.sys.argv) > 1:
-        imgvariations = ImageVariations(in_memory=False, batch_size=int(os.sys.argv[1]))
+        imgvariations = ImageVariations(pools=1, batch_size=int(os.sys.argv[1]))
         imgvariations.start_threads()
         images_batch = imgvariations.get_batch()
         imgvariations.stop_threads()
-        for i in range(int(os.sys.argv[1])):
-            imgvariations.save_image(images_batch[i], name="variant_%d"%i)
+        for variant_id in range(int(os.sys.argv[1])):
+            imgvariations.save_image(images_batch[variant_id], name="variant_%d"%variant_id)
         print("Generated %s image variations as they are when fed to the network"%os.sys.argv[1])
     else:
         print("Testing memory requiremens")
         imgvariations = ImageVariations()
-        input("Press Enter to continue... (all images loaded)")
+        input("Press Enter to continue... (all images loaded and pools filled)")
         iml1 = imgvariations.get_batch()
         iml2 = imgvariations.get_batch()
         iml3 = imgvariations.get_batch()

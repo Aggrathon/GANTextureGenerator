@@ -261,7 +261,7 @@ class GANetwork():
                 data = session.run(calculations, feed_dict=feed_dict)
                 #Track progress
                 logger(i, data, feed_dict)
-                if timer() - last_save > 600:
+                if timer() - last_save > 1800:
                     saver.save(session, os.path.join(self.directory, self.name))
                     last_save = timer()
         except KeyboardInterrupt:
@@ -303,9 +303,10 @@ class BasicLogger():
 
 class TBLogger(BasicLogger):
     """Log the progress of training to tensorboard (and some progress output to the console)"""
-    def __init__(self, network, session, loginterval=10):
+    def __init__(self, network, session, loginterval=1):
         super().__init__(network, session, loginterval)
-        self.image_interval = loginterval*100
+        self.image_interval = loginterval*500
+        self.summary_interval = 10*loginterval
         os.makedirs(LOG_DIR, exist_ok=True)
         self.writer = tf.summary.FileWriter(os.path.join(LOG_DIR, network.name))
         self.summary = tf.summary.merge_all()
@@ -344,7 +345,7 @@ class TBLogger(BasicLogger):
                 )
                 self.writer.add_summary(image, iteration)
                 self.writer.add_summary(summary, iteration)
-            else:
+            elif iteration%self.summary_interval == 0:
                 #Save summary
                 summary = self.session.run(self.summary, feed_dict=dict)
                 self.writer.add_summary(summary, iteration)
