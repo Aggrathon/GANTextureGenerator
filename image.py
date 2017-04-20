@@ -15,7 +15,7 @@ class ImageVariations():
     def __init__(self, image_size=64, batch_size=64, colored=True,
                  pools=8, pool_renew=1,
                  in_directory='input', out_directory='output',
-                 rotation_range=(-20, 20), brightness_range=(0.7, 1.2),
+                 rotation_range=(-15, 15), brightness_range=(0.7, 1.2),
                  saturation_range=(0.7, 1.), contrast_range=(0.9, 1.3),
                  size_range=(1.0, 0.8)):
         #Parameters
