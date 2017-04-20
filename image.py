@@ -15,7 +15,8 @@ class ImageVariations():
     def __init__(self, image_size=64, batch_size=64, colored=True,
                  in_memory=True, in_directory='input', out_directory='output',
                  rotation_range=(-20, 20), brightness_range=(0.7, 1.2),
-                 saturation_range=(0.7, 1.), contrast_range=(0.9, 1.3)):
+                 saturation_range=(0.7, 1.), contrast_range=(0.9, 1.3),
+                 size_range=(1.0, 0.8)):
         #Parameters
         self.image_size = image_size
         self.in_memory = in_memory
@@ -27,6 +28,7 @@ class ImageVariations():
         self.brightness_range = brightness_range
         self.saturation_range = saturation_range
         self.contrast_range = contrast_range
+        self.size_range = size_range
         self.colored = colored
         #Thread variables
         self.queue = Queue()
@@ -70,38 +72,33 @@ class ImageVariations():
                 images = [Image.open(os.path.join(self.in_directory, file)) for file in files]
             else:
                 images = [Image.open(os.path.join(self.in_directory, file)).convert("L") for file in files]
-        while True:
+        index = 0
+        while not self.closing:
             if self.in_memory:
-                image = random.choice(images)
+                image = images[index]
+                index = (index+1)%len(images)
             else:
-                image = Image.open(os.path.join(self.in_directory, random.choice(files)))
+                image = Image.open(os.path.join(self.in_directory, files[index]))
+                index = (index+1)%len(files)
                 if not self.colored:
                     image = image.convert("L")
             arr = np.asarray(self.get_variation(image), dtype=np.float)
             if not self.colored:
                 arr.shape = arr.shape+(1,)
             self.queue.put(arr)
-            if self.closing:
-                return
-            if self.queue.qsize() >= self.batch_size*3:
+            while self.queue.qsize() >= self.batch_size and not self.closing:
                 self.event.wait()
 
     def get_variation(self, image):
         """Get an variation of the image according to the object config"""
         #Crop
         min_dim = min(image.size)
-        scale = math.sqrt(2)*self.image_size*1.1
-        if scale*3 < min_dim:
-            scale = random.uniform(0.3, 0.7)
-        elif scale*2 < min_dim:
-            scale = random.uniform(min_dim, min_dim - scale)/min_dim
-        else:
-            scale = random.uniform(scale, min_dim)/min_dim
+        scale = random.uniform(*self.size_range)
         size = int(random.random()*min_dim*(1-scale)+min_dim*scale)
         pos = (random.randrange(0, image.size[0]-size), random.randrange(0, image.size[1]-size))
         image = image.crop((pos[0], pos[1], pos[0]+size, pos[1]+size))
         #Rotate
-        size = image.size[0]/math.sqrt(2)
+        size = image.size[0]/math.sqrt(2) #TODO claculate divisor from max angle instead of 45° (sqrt2)
         offset = (image.size[0]-size)/2
         rotation = random.randint(*self.rotation_range)
         image = image.rotate(rotation).crop((offset, offset, offset+size, offset+size))

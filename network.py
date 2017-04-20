@@ -13,9 +13,9 @@ LOG_DIR = 'logs'
 
 class GANetwork():
 
-    def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None, 
-                 input_size=128, learning_rate=0.0001, dropout=0.4, generator_convolutions=5, generator_base_width=32,
-                 discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1, grid_size=4, 
+    def __init__(self, name, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None,
+                 input_size=64, learning_rate=0.0002, dropout=0.4, generator_convolutions=5, generator_base_width=32,
+                 discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1, grid_size=4,
                  log=True, y_offset=0.1, learning_momentum=0.6, learning_momentum2=0.9):
         """
         Create a GAN for generating images
