@@ -1,5 +1,6 @@
 # Texture Generator using Generative Advisary Networks
-[ INSERT DESCRIPTION HERE ]
+This is a neural network for generating images using the GAN (Generative Advisary Network) arcitechture. 
+It is initially setup for creating more texture-like images where some cropping, rotation and filtering can be used to increase the amount training data (input images).
 
 
 ## Examples
@@ -24,9 +25,13 @@ Here are 16 generated stone walls after 112 000 training iterations. However the
  - Numpy
 
 
+## Inspirations
+ - [Generative Adversarial Nets in TensorFlow](http://wiseodd.github.io/techblog/2016/09/17/gan-tensorflow/)
+ - [DCGAN](https://arxiv.org/abs/1511.06434)
+
+
 ## TODO
- - Better readme
- - Generate example
+ - Fix the stalled learning
  - Try bigger sizes than 64x64
     - maybe through an upscaling GAN
  - Try making repeatable textures
