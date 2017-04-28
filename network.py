@@ -56,7 +56,7 @@ class GANetwork():
         self._dis_conv = discriminator_convolutions
         self._dis_width = discriminator_base_width
         self._class_depth = classification_depth
-        self.dropout = dropout
+        self._dropout = dropout
         #Training variables
         self.learning_rate = (learning_rate, learning_momentum, learning_momentum2)
         self._y_offset = y_offset
@@ -77,7 +77,6 @@ class GANetwork():
             self.image_input_scaled = tf.subtract(tf.to_float(self.image_input)/127.5, 1, name='image_scaling')
         self.generator_output = None
         self.image_output = self.image_grid_output = None
-        self.image_logit = self.generated_logit = None
         self.variation_updater = self.image_variation = None
         self.generator_solver = self.discriminator_solver = None
         if setup:
@@ -85,14 +84,14 @@ class GANetwork():
 
     def setup_network(self):
         """Initialize the network if it is not done in the constructor"""
-        self.__generator__()
-        self.setup_output()
-        self.discriminator(self.generator_output, self._dis_conv, self._dis_width, self._class_depth)
-        g_loss, d_loss, d_loss_real, d_loss_fake = self.loss_functions(self.image_logit, self.generated_logit, self._y_offset)
+        self.generator_output = self.__generator__([self.generator_input])[0]
+        self.__output__()
+        gen_logit, image_logit = self.__discriminator__([self.generator_output, self.image_input_scaled])
+        g_loss, d_loss, d_loss_real, d_loss_fake = self.loss_functions(image_logit, gen_logit, self._y_offset)
         self.generator_solver, self.discriminator_solver = self.solver_functions(g_loss, d_loss, *self.learning_rate)
 
 
-    def __generator__(self):
+    def __generator__(self, input_tensors):
         """Create a Generator Network"""
         conv_layers = self._gen_conv
         conv_size = self._gen_width
@@ -101,13 +100,15 @@ class GANetwork():
             conv_image_size = self.image_size // (2**conv_layers)
             assert conv_image_size*(2**conv_layers) == self.image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
             #Input Layer
-            prev_layer = expand_relu(self.generator_input, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)], 'expand')
+            prev_layer = expand_relu(input_tensors, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)], 'expand')
             #Conv layers
             for i in range(conv_layers-1):
                 prev_layer = conv2d_transpose(prev_layer, self.batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)
-            self.generator_output = conv2d_transpose_tanh(prev_layer, self.batch_size, self.colors, 'output')
+            return conv2d_transpose_tanh(prev_layer, self.batch_size, self.colors, 'output')
 
-    def setup_output(self):
+    def __output__(self):
+        if self.log:
+            self.__variation_summary__()
         with tf.name_scope('output'):
             with tf.name_scope("image_list") as scope:
                 self.image_output = tf.cast((self.generator_output + 1) * 127.5, tf.uint8, name=scope)
@@ -129,41 +130,40 @@ class GANetwork():
                 self.image_grid_output = tf.cast(grid, tf.uint8, name=scope)
 
 
-    def discriminator(self, generator_output, conv_layers, conv_size, class_layers):
+    def __discriminator__(self, input_tensors):
         """Create a Discriminator Network"""
+        conv_layers, conv_size, class_layers = self._dis_conv, self._dis_width, self._class_depth
         image_size = self.image_size
         with tf.variable_scope('discriminator') as scope:
             conv_output_size = ((image_size//(2**conv_layers))**2) * conv_size * conv_layers
             class_output_size = 2**int(math.log(conv_output_size//2, 2))
             #Create Layers
-            def create_network(layer, summary=True):
-                #Convolutional layers
-                for i in range(conv_layers):
-                    layer = conv2d(layer, conv_size*(i+1), name='convolution_%d'%i, norm=(i != 0), summary=summary)
-                layer = tf.reshape(layer, [-1, conv_output_size])
-                #Classification layers
-                for i in range(class_layers):
-                    layer = relu_dropout(layer, class_output_size, self.dropout, 'classification_%d'%i, summary=summary)
-                return linear(layer, 1, 'output', summary=summary)
-            self.generated_logit = create_network(generator_output)
-            scope.reuse_variables()
-            self.image_logit = create_network(self.image_input_scaled, False)
-        if self.log:
-            with tf.variable_scope('pixel_variation'):
-                #Pixel Variations
-                img_tot_var = tf.image.total_variation(self.image_input_scaled)
-                gen_tot_var = tf.image.total_variation(generator_output)
-                image_variation = tf.reduce_sum(img_tot_var)
-                gener_variation = tf.reduce_sum(gen_tot_var)
-                tf.summary.histogram('images', img_tot_var)
-                tf.summary.histogram('generated', gen_tot_var)
-                tf.summary.scalar('images', image_variation)
-                tf.summary.scalar('generated', gener_variation)
-                ema = tf.train.ExponentialMovingAverage(decay=0.95, num_updates=self.iterations)
-                ema_apply = ema.apply([image_variation])
-                self.variation_updater = tf.group(ema_apply)
-                self.image_variation = ema.average(image_variation)
-                tf.summary.scalar('images_averaged', self.image_variation)
+            prev_layer = input_tensors
+            for i in range(conv_layers): #Convolutional layers
+                prev_layer = conv2d(prev_layer, conv_size*(i+1), name='convolution_%d'%i, norm=(i != 0))
+            prev_layer = [tf.reshape(layer, [-1, conv_output_size]) for layer in prev_layer]
+            for i in range(class_layers): #Classification layers
+                prev_layer = relu_dropout(prev_layer, class_output_size, self._dropout, 'classification_%d'%i)
+            prev_layer = linear(prev_layer, 1, 'output')
+        return prev_layer
+
+    def __variation_summary__(self):
+        """Create summaries for pixel variation"""
+        with tf.variable_scope('pixel_variation'):
+            #Pixel Variations
+            img_tot_var = tf.image.total_variation(self.image_input_scaled)
+            gen_tot_var = tf.image.total_variation(self.generator_output)
+            image_variation = tf.reduce_sum(img_tot_var)
+            gener_variation = tf.reduce_sum(gen_tot_var)
+            tf.summary.histogram('images', img_tot_var)
+            tf.summary.histogram('generated', gen_tot_var)
+            tf.summary.scalar('images', image_variation)
+            tf.summary.scalar('generated', gener_variation)
+            ema = tf.train.ExponentialMovingAverage(decay=0.95, num_updates=self.iterations)
+            ema_apply = ema.apply([image_variation])
+            self.variation_updater = tf.group(ema_apply)
+            self.image_variation = ema.average(image_variation)
+            tf.summary.scalar('images_averaged', self.image_variation)
 
 
     def loss_functions(self, real_logit, fake_logit, y_offset=0):

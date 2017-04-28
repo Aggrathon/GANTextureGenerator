@@ -58,7 +58,7 @@ class ImageVariations():
             t.start()
         if(self.pools > 1):
             print('Processing input images')
-        self.pool = [[self.queue.get() for _ in range(self.batch_size)] for _ in range(self.pools)]
+        self.pool = [[] for _ in range(self.pools)]
 
     def stop_threads(self):
         """Stop the threads that are generating image variations (freeing memory)"""
@@ -67,14 +67,16 @@ class ImageVariations():
 
     def get_batch(self):
         """Get a batch of images as arrays"""
-        if self.closing:
+        if self.closing:    #Start threads
             self.start_threads()
         self.event.set()
+        if len(self.pool[self.pool_index]) == 0:    #Check and fill image pool
+            self.pool[self.pool_index] = [self.queue.get() for _ in range(self.batch_size)]
         images = self.pool[self.pool_index]
-        for i in range(self.pool_renew):
+        for i in range(self.pool_renew):    #Replace old images
             self.pool[self.pool_index][(self.pool_iteration+i)%self.batch_size] = self.queue.get()
         self.pool_index += 1
-        if self.pool_index == self.pools:
+        if self.pool_index == self.pools:   #Cycle indexes
             self.pool_index = 0
             self.pool_iteration = (self.pool_iteration+self.pool_renew)%self.batch_size
         self.event.clear()
