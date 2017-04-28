@@ -56,6 +56,8 @@ class ImageVariations():
         self.closing = False
         for t in self.threads:
             t.start()
+        if(self.pools > 1):
+            print('Processing input images')
         self.pool = [[self.queue.get() for _ in range(self.batch_size)] for _ in range(self.pools)]
 
     def stop_threads(self):
