@@ -95,13 +95,10 @@ class GANetwork():
         """Create a Generator Network"""
         conv_layers = self._gen_conv
         conv_size = self._gen_width
+        conv_image_size = self.image_size // (2**conv_layers)
+        assert conv_image_size*(2**conv_layers) == self.image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
         with tf.variable_scope('generator'):
-            #Network layer variables
-            conv_image_size = self.image_size // (2**conv_layers)
-            assert conv_image_size*(2**conv_layers) == self.image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
-            #Input Layer
             prev_layer = expand_relu(input_tensors, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)], 'expand')
-            #Conv layers
             for i in range(conv_layers-1):
                 prev_layer = conv2d_transpose(prev_layer, self.batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)
             return conv2d_transpose_tanh(prev_layer, self.batch_size, self.colors, 'output')
@@ -257,12 +254,14 @@ class GANetwork():
                 print("\nCreated a new network (%s)\n"%repr(e))
         return session, saver, start_iteration
 
+    def get_calculations(self):
+        return [self.generator_solver, self.discriminator_solver]
 
     def train(self, batches=100000, print_interval=1):
         """Train the network for a number of batches (continuing if there is an existing model)"""
         start_time = last_time = last_save = timer()
         session, saver, start_iteration = self.get_session()
-        calculations = [self.generator_solver, self.discriminator_solver] 
+        calculations = self.get_calculations()
         if self.log:
             logger = SummaryLogger(self, session)
             calculations += logger.get_calculations()
@@ -323,7 +322,7 @@ class SummaryLogger():
         #Save image
         if iteration%self.image_interval == 0:
             #Hack to make tensorboard show multiple images, not just the latest one
-            dict[self.gan.input] = self.batch_input
+            dict[self.gan.generator_input] = self.batch_input
             image, summary = self.session.run(
                 [tf.summary.image(
                     'training/iteration/%d'%iteration,

@@ -6,7 +6,7 @@ from autogan import AutoGanGenerator
 
 CONFIG = {
     'colors': 3,
-    'batch_size': 192,
+    'batch_size': 128,
     'generator_base_width': 32,
     'image_size': 64,
     'discriminator_convolutions': 5,
