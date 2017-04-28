@@ -12,12 +12,15 @@ CONFIG = {
     'generator_convolutions': 5,
 }
 
+def get_network(name, **config):
+    return GANetwork(name, **config)
+
 
 if __name__ == '__main__':
     if len(os.sys.argv) < 2:
         print('Usage:')
         print('  python %s network_name [num_iterations]\t- Trains a network on the images in the input folder'%os.sys.argv[0])
     elif len(os.sys.argv) < 3:
-        GANetwork(os.sys.argv[1], **CONFIG).train()
+        get_network(os.sys.argv[1], **CONFIG).train()
     else:
-        GANetwork(os.sys.argv[1], **CONFIG).train(int(os.sys.argv[2]))
+        get_network(os.sys.argv[1], **CONFIG).train(int(os.sys.argv[2]))

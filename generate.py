@@ -1,10 +1,7 @@
 
 import os
 
-import tensorflow as tf
-
-from network import GANetwork
-from train import CONFIG
+from train import CONFIG, get_network
 
 
 def get_config(batch):
@@ -14,20 +11,19 @@ def get_config(batch):
     config['grid_size'] = int(batch**0.5)
     return config
 
-
 def generate(name, amount=1):
-    gan = GANetwork(name, **get_config(amount))
-    session, _, iter = gan.get_session()
-    if iter == 0:
+    gan = get_network(name, **get_config(amount))
+    session, _, iteration = gan.get_session()
+    if iteration == 0:
         print("No already trained network found (%s)"%name)
         return
     print("Generating %d images using the %s network"%(amount, name))
     gan.generate(session, gan.name, amount)
 
 def generate_grid(name, size=5):
-    gan = GANetwork(name, **get_config(size*size))
-    session, _, iter = gan.get_session()
-    if iter == 0:
+    gan = get_network(name, **get_config(size*size))
+    session, _, iteration = gan.get_session()
+    if iteration == 0:
         print("No already trained network found (%s)"%name)
         return
     print("Generating a image grid using the %s network"%name)
