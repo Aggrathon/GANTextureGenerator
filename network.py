@@ -35,6 +35,7 @@ def image_decoder(input_tensors, name='decoder', image_size=64, convolutions=5, 
     return prev_layer
 
 def image_output(input_tensors, name='output', image_size=64, grid_size=4):
+    """Create operations for converting tensors into images"""
     output = []
     with tf.name_scope(name):
         with tf.name_scope("image_single"):
@@ -52,3 +53,46 @@ def image_output(input_tensors, name='output', image_size=64, grid_size=4):
                             grid = tf.add(grid, bound)
                 output.append(tf.cast(grid, tf.uint8))
     return output
+
+def batch_optimizer(name, variables, positive_tensors=None, positive_value=1, positive_prefix='',
+                    negative_tensors=None, negative_value=0, negative_prefix='',
+                    learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99, global_step=None, summary=True):
+    """Create optimizer for batches with negative and positive influences"""
+    with tf.variable_scope(name):
+        losses = []
+        if positive_tensors is not None:
+            labels = tf.fill(tf.shape(positive_tensors[0]), positive_value)
+            pos_los = [tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(logits=logit, labels=labels),
+                name=positive_prefix+'loss') for logit in positive_tensors]
+            losses.extend(pos_los)
+            if summary and negative_tensors is not None:
+                tf.summary.scalar(positive_prefix+'loss', tf.add_n(pos_los))
+        if negative_tensors is not None:
+            labels = tf.fill(tf.shape(negative_tensors[0]), negative_value)
+            neg_los = [tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(logits=logit, labels=labels),
+                name=negative_prefix+'loss') for logit in negative_tensors]
+            losses.extend(neg_los)
+            if summary and positive_tensors is not None:
+                tf.summary.scalar(negative_prefix+'loss', tf.add_n(neg_los))
+        loss = tf.add_n(losses)
+        if summary:
+            tf.summary.scalar('loss', loss)
+        adam = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2)
+        if global_step is None:
+            solver = adam.minimize(loss, var_list=variables)
+        else:
+            solver = adam.minimize(loss, var_list=variables, global_step=global_step)
+        return solver
+
+def image_optimizer(name, variables, real_images, fake_images,
+                    learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99, summary=True):
+    """Create optimizer for images that should be the same"""
+    with tf.variable_scope(name):
+        loss = tf.add_n([tf.reduce_mean(tf.square(fake-real)) for fake, real in zip(fake_images, real_images)], name='loss')
+        if summary:
+            tf.summary.scalar('loss', loss)
+        optimizer = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2)
+        solver = optimizer.minimize(loss, var_list=variables)
+    return solver

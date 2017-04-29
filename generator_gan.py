@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 from image import ImageVariations
-from network import image_decoder, image_encoder, image_output
+from network import image_decoder, image_encoder, image_output, batch_optimizer
 
 LOG_DIR = 'logs'
 
@@ -84,39 +84,16 @@ class GANetwork():
 
     def setup_network(self):
         """Initialize the network if it is not done in the constructor"""
-        self.generator_output = image_decoder([self.generator_input], 'generator', self.image_size,
-            self._gen_conv, self._gen_width, self.input_size, self.batch_size, self.colors)[0]
+        self.generator_output = image_decoder([self.generator_input], 'generator', self.image_size, self._gen_conv, self._gen_width, self.input_size, self.batch_size, self.colors)[0]
         self.image_output, self.image_grid_output = image_output([self.generator_output], 'output', self.image_size, self.grid_size)
-        gen_logit, image_logit = image_encoder([self.generator_output, self.image_input_scaled], 'discriminator',
-            self.image_size, self._dis_conv, self._dis_width, self._class_depth, self._dropout, 1)
-        g_loss, d_loss, d_loss_real, d_loss_fake = self.loss_functions(image_logit, gen_logit, self._y_offset)
-        self.generator_solver, self.discriminator_solver = self.solver_functions(g_loss, d_loss, *self.learning_rate)
+        gen_logit, image_logit = image_encoder([self.generator_output, self.image_input_scaled], 'discriminator', self.image_size, self._dis_conv, self._dis_width, self._class_depth, self._dropout, 1)
+        with tf.variable_scope('train'):
+            gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
+            dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
+            self.generator_solver = batch_optimizer('generator', gen_var, [gen_logit], 1-self._y_offset, '', None, 0, '', *self.learning_rate, global_step=self.iterations, summary=self.log)
+            self.discriminator_solver = batch_optimizer('discriminator', dis_var, [image_logit], 1-self._y_offset, 'real_', [gen_logit], self._y_offset, 'fake_', *self.learning_rate, summary=self.log)
         if self.log:
             self.__variation_summary__()
-
-    def __output__(self):
-        if self.log:
-            self.__variation_summary__()
-        with tf.name_scope('output'):
-            with tf.name_scope("image_list") as scope:
-                self.image_output = tf.cast((self.generator_output + 1) * 127.5, tf.uint8, name=scope)
-            with tf.name_scope('image_grid') as scope:
-                wh = self.grid_size * (self.image_size + 2) + 2
-                grid = tf.Variable(0, trainable=False, dtype=tf.uint8, expected_shape=[wh, wh, self.image_size])
-                for x in range(self.grid_size):
-                    for y in range(self.grid_size):
-                        bound = tf.to_int32(tf.image.pad_to_bounding_box(
-                            self.image_output[x+y*self.grid_size],
-                            2 + x*(self.image_size + 2),
-                            2 + y*(self.image_size + 2),
-                            wh, wh
-                        ))
-                        if x == 0 and y == 0:
-                            grid = bound
-                        else:
-                            grid = tf.add(grid, bound)
-                self.image_grid_output = tf.cast(grid, tf.uint8, name=scope)
-
 
     def __variation_summary__(self):
         """Create summaries for pixel variation"""
@@ -135,46 +112,6 @@ class GANetwork():
             self.variation_updater = tf.group(ema_apply)
             self.image_variation = ema.average(image_variation)
             tf.summary.scalar('images_averaged', self.image_variation)
-
-
-    def loss_functions(self, real_logit, fake_logit, y_offset=0):
-        """Create loss calculations for the networks"""
-        with tf.variable_scope('loss'):
-            with tf.name_scope('discriminator'):
-                if y_offset < 0.001:
-                    d_r_labels = tf.ones_like(real_logit)
-                    d_f_labels = tf.zeros_like(fake_logit)
-                    g_r_labels = tf.ones_like(fake_logit)
-                else:
-                    d_r_labels = tf.fill(tf.shape(real_logit), (1 - y_offset))
-                    d_f_labels = tf.fill(tf.shape(fake_logit), y_offset)
-                    g_r_labels = tf.fill(tf.shape(fake_logit), (1 - y_offset))
-                real_loss = tf.reduce_mean(
-                    tf.nn.sigmoid_cross_entropy_with_logits(logits=real_logit, labels=d_r_labels),
-                    name='real_loss')
-                fake_loss = tf.reduce_mean(
-                    tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=d_f_labels),
-                    name='fake_loss')
-                d_loss = tf.add(real_loss, fake_loss, 'loss')
-                tf.summary.scalar('discriminator_loss', d_loss)
-                tf.summary.scalar('fake_loss', fake_loss)
-                tf.summary.scalar('real_loss', real_loss)
-            with tf.name_scope('generator'):
-                batch_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logit, labels=g_r_labels)
-                g_loss = tf.reduce_mean(batch_loss, name='loss')
-                tf.summary.scalar('generator_loss', g_loss)
-        return g_loss, d_loss, real_loss, fake_loss
-
-    def solver_functions(self, g_loss, d_loss, learning_rate, learning_momentum, learning_momentum2=0.7):
-        """Create solvers for the networks"""
-        with tf.variable_scope('train'):
-            with tf.variable_scope('generator'):
-                g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
-                g_solver = tf.train.AdamOptimizer(learning_rate*2, learning_momentum, learning_momentum2).minimize(g_loss, var_list=g_vars, global_step=self.iterations)
-            with tf.variable_scope('discriminator'):
-                d_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
-                d_solver = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2).minimize(d_loss, var_list=d_vars)
-        return g_solver, d_solver
 
 
     def random_input(self, n=1):
@@ -224,7 +161,6 @@ class GANetwork():
         except Exception as e:
             start_iteration = 0
             if self.log:
-                tf.summary.FileWriter(os.path.join(LOG_DIR, self.name), session.graph)
                 print("\nCreated a new network (%s)\n"%repr(e))
         return session, saver, start_iteration
 
@@ -237,7 +173,7 @@ class GANetwork():
         session, saver, start_iteration = self.get_session()
         calculations = self.get_calculations()
         if self.log:
-            logger = SummaryLogger(self, session)
+            logger = SummaryLogger(self, session, start_iteration)
             calculations += logger.get_calculations()
         try:
             print("Training the GAN on images in the '%s' folder"%self.image_manager.in_directory)
@@ -279,13 +215,16 @@ class GANetwork():
 
 class SummaryLogger():
     """Log the progress of training to tensorboard (and some progress output to the console)"""
-    def __init__(self, network, session, summary_interval=20, image_interval=500):
+    def __init__(self, network, session, iteration, summary_interval=20, image_interval=500):
         self.session = session
         self.gan = network
         self.image_interval = image_interval
         self.summary_interval = summary_interval
         os.makedirs(LOG_DIR, exist_ok=True)
-        self.writer = tf.summary.FileWriter(os.path.join(LOG_DIR, network.name))
+        if iteration == 0:
+            self.writer = tf.summary.FileWriter(os.path.join(LOG_DIR, network.name), session.graph)
+        else:
+            self.writer = tf.summary.FileWriter(os.path.join(LOG_DIR, network.name))
         self.summary = tf.summary.merge_all()
         self.batch_input = network.random_input(network.batch_size)
 
