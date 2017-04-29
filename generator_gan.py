@@ -77,7 +77,6 @@ class GANetwork():
             self.image_input_scaled = tf.subtract(tf.to_float(self.image_input)/127.5, 1, name='image_scaling')
         self.generator_output = None
         self.image_output = self.image_grid_output = None
-        self.variation_updater = self.image_variation = None
         self.generator_solver = self.discriminator_solver = None
         if setup:
             self.setup_network()
@@ -92,31 +91,12 @@ class GANetwork():
             dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
             self.generator_solver = batch_optimizer('generator', gen_var, [gen_logit], 1-self._y_offset, '', None, 0, '', *self.learning_rate, global_step=self.iterations, summary=self.log)
             self.discriminator_solver = batch_optimizer('discriminator', dis_var, [image_logit], 1-self._y_offset, 'real_', [gen_logit], self._y_offset, 'fake_', *self.learning_rate, summary=self.log)
-        if self.log:
-            self.__variation_summary__()
-
-    def __variation_summary__(self):
-        """Create summaries for pixel variation"""
-        with tf.variable_scope('pixel_variation'):
-            #Pixel Variations
-            img_tot_var = tf.image.total_variation(self.image_input_scaled)
-            gen_tot_var = tf.image.total_variation(self.generator_output)
-            image_variation = tf.reduce_sum(img_tot_var)
-            gener_variation = tf.reduce_sum(gen_tot_var)
-            tf.summary.histogram('images', img_tot_var)
-            tf.summary.histogram('generated', gen_tot_var)
-            tf.summary.scalar('images', image_variation)
-            tf.summary.scalar('generated', gener_variation)
-            ema = tf.train.ExponentialMovingAverage(decay=0.95, num_updates=self.iterations)
-            ema_apply = ema.apply([image_variation])
-            self.variation_updater = tf.group(ema_apply)
-            self.image_variation = ema.average(image_variation)
-            tf.summary.scalar('images_averaged', self.image_variation)
 
 
-    def random_input(self, n=1):
+
+    def random_input(self):
         """Creates a random input for the generator"""
-        return np.random.uniform(0.0, 1.0, size=[n, self.input_size])
+        return np.random.uniform(0.0, 1.0, size=[self.batch_size, self.input_size])
 
 
     def generate(self, session, name, amount=1):
@@ -124,7 +104,7 @@ class GANetwork():
         def get_arr():
             arr = np.asarray(session.run(
                 self.image_output,
-                feed_dict={self.generator_input: self.random_input(self.batch_size)}
+                feed_dict={self.generator_input: self.random_input()}
             ), np.uint8)
             arr.shape = self.batch_size, self.image_size, self.image_size, self.colors
             return arr
@@ -143,7 +123,7 @@ class GANetwork():
         """Generate a image and save it"""
         grid = session.run(
             self.image_grid_output,
-            feed_dict={self.generator_input: self.random_input(self.batch_size)}
+            feed_dict={self.generator_input: self.random_input()}
         )
         self.image_manager.image_size = self.image_grid_output.get_shape()[1]
         self.image_manager.save_image(grid, name)
@@ -164,17 +144,19 @@ class GANetwork():
                 print("\nCreated a new network (%s)\n"%repr(e))
         return session, saver, start_iteration
 
-    def get_calculations(self):
-        return [self.generator_solver, self.discriminator_solver]
+    def __training_iteration__(self, session, i):
+        feed_dict = {
+            self.image_input: self.image_manager.get_batch(),
+            self.generator_input: self.random_input()
+        }
+        session.run([self.generator_solver, self.discriminator_solver], feed_dict=feed_dict)
 
     def train(self, batches=100000, print_interval=1):
         """Train the network for a number of batches (continuing if there is an existing model)"""
         start_time = last_time = last_save = timer()
         session, saver, start_iteration = self.get_session()
-        calculations = self.get_calculations()
         if self.log:
             logger = SummaryLogger(self, session, start_iteration)
-            calculations += logger.get_calculations()
         try:
             print("Training the GAN on images in the '%s' folder"%self.image_manager.in_directory)
             print("To stop the training early press Ctrl+C (progress will be saved)")
@@ -184,11 +166,7 @@ class GANetwork():
             print("To generate images using the trained network run 'python generate.py %s'"%self.name)
             print()
             for i in range(start_iteration, start_iteration+batches+1):
-                feed_dict = {
-                    self.image_input: self.image_manager.get_batch(),
-                    self.generator_input: self.random_input(self.batch_size)
-                }
-                session.run(calculations, feed_dict=feed_dict)
+                self.__training_iteration__(session, i)
                 #Print progress
                 if i%print_interval == 0:
                     curr_time = timer()
@@ -198,7 +176,7 @@ class GANetwork():
                         (i, time//3600, time%3600//60, time%60, time_per), end='\r')
                     last_time = curr_time
                 if self.log:
-                    logger(i, feed_dict)
+                    logger(i)
                 #Save network
                 if timer() - last_save > 1800:
                     saver.save(session, os.path.join(self.directory, self.name))
@@ -226,16 +204,13 @@ class SummaryLogger():
         else:
             self.writer = tf.summary.FileWriter(os.path.join(LOG_DIR, network.name))
         self.summary = tf.summary.merge_all()
-        self.batch_input = network.random_input(network.batch_size)
+        self.batch_input = network.random_input()
 
-    def get_calculations(self):
-        return [self.gan.variation_updater]
-
-    def __call__(self, iteration, dict=None):
+    def __call__(self, iteration):
         #Save image
         if iteration%self.image_interval == 0:
             #Hack to make tensorboard show multiple images, not just the latest one
-            dict[self.gan.generator_input] = self.batch_input
+            dict = {self.gan.generator_input: self.batch_input, self.gan.image_input: self.gan.image_manager.get_batch()}
             image, summary = self.session.run(
                 [tf.summary.image(
                     'training/iteration/%d'%iteration,
@@ -248,6 +223,7 @@ class SummaryLogger():
             self.writer.add_summary(image, iteration)
             self.writer.add_summary(summary, iteration)
         elif iteration%self.summary_interval == 0:
+            dict = {self.gan.generator_input: self.gan.random_input(), self.gan.image_input: self.gan.image_manager.get_batch()}
             #Save summary
             summary = self.session.run(self.summary, feed_dict=dict)
             self.writer.add_summary(summary, iteration)

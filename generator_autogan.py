@@ -27,8 +27,7 @@ class AutoGanGenerator(GANetwork):
             self.generator_solver = batch_optimizer('generator', gen_var, [gen_logit], 1-self._y_offset, '', None, 0, '', *self.learning_rate, global_step=self.iterations, summary=self.log)
             self.discriminator_solver = batch_optimizer('discriminator', dis_var, [image_logit], 1-self._y_offset, 'real_', [gen_logit], self._y_offset, 'fake_', *self.learning_rate, summary=self.log)
             self.autoencoder_solver = image_optimizer('autoencoder', auto_var+gen_var, [self.image_input_scaled], [auto_out], *self.learning_rate, summary=self.log)
-        if self.log:
-            self.__variation_summary__()
+
 
     def __autoencoder_solver__(self, decoder_result):
         #Decoder
@@ -40,9 +39,18 @@ class AutoGanGenerator(GANetwork):
             auto_solver = optimizer.minimize(loss, var_list=variables)
         return auto_solver
 
-    def random_input(self, n=1):
+    def random_input(self):
         """Creates a random input for the generator"""
-        return np.random.uniform(-1.0, 1.0, size=[n, self.input_size])
+        return np.random.uniform(-1.0, 1.0, size=[self.batch_size, self.input_size])
 
-    def get_calculations(self):
-        return [self.generator_solver, self.discriminator_solver, self.autoencoder_solver]
+
+    def __training_iteration__(self, session, i):
+        feed_dict = {
+            self.image_input: self.image_manager.get_batch(),
+            self.generator_input: self.random_input()
+        }
+        if i % int(np.log10(i//2+1)) == 0:
+            session.run([self.discriminator_solver, self.autoencoder_solver], feed_dict=feed_dict)
+        else:
+            session.run([self.generator_solver, self.discriminator_solver], feed_dict=feed_dict)
+
