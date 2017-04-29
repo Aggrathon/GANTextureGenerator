@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 from image import ImageVariations
-from operators import *
+from network import image_decoder, image_encoder, image_output
 
 LOG_DIR = 'logs'
 
@@ -84,24 +84,15 @@ class GANetwork():
 
     def setup_network(self):
         """Initialize the network if it is not done in the constructor"""
-        self.generator_output = self.__generator__([self.generator_input])[0]
-        self.__output__()
-        gen_logit, image_logit = self.__discriminator__([self.generator_output, self.image_input_scaled])
+        self.generator_output = image_decoder([self.generator_input], 'generator', self.image_size,
+            self._gen_conv, self._gen_width, self.input_size, self.batch_size, self.colors)[0]
+        self.image_output, self.image_grid_output = image_output([self.generator_output], 'output', self.image_size, self.grid_size)
+        gen_logit, image_logit = image_encoder([self.generator_output, self.image_input_scaled], 'discriminator',
+            self.image_size, self._dis_conv, self._dis_width, self._class_depth, self._dropout, 1)
         g_loss, d_loss, d_loss_real, d_loss_fake = self.loss_functions(image_logit, gen_logit, self._y_offset)
         self.generator_solver, self.discriminator_solver = self.solver_functions(g_loss, d_loss, *self.learning_rate)
-
-
-    def __generator__(self, input_tensors):
-        """Create a Generator Network"""
-        conv_layers = self._gen_conv
-        conv_size = self._gen_width
-        conv_image_size = self.image_size // (2**conv_layers)
-        assert conv_image_size*(2**conv_layers) == self.image_size, "Images must be a multiple of two (or at least divisible by 2**num_of_conv_layers_plus_one)"
-        with tf.variable_scope('generator'):
-            prev_layer = expand_relu(input_tensors, [-1, conv_image_size, conv_image_size, conv_size*2**(conv_layers-1)], 'expand')
-            for i in range(conv_layers-1):
-                prev_layer = conv2d_transpose(prev_layer, self.batch_size, 2**(conv_layers-i-2)*conv_size, 'convolution_%d'%i)
-            return conv2d_transpose_tanh(prev_layer, self.batch_size, self.colors, 'output')
+        if self.log:
+            self.__variation_summary__()
 
     def __output__(self):
         if self.log:
@@ -126,23 +117,6 @@ class GANetwork():
                             grid = tf.add(grid, bound)
                 self.image_grid_output = tf.cast(grid, tf.uint8, name=scope)
 
-
-    def __discriminator__(self, input_tensors):
-        """Create a Discriminator Network"""
-        conv_layers, conv_size, class_layers = self._dis_conv, self._dis_width, self._class_depth
-        image_size = self.image_size
-        with tf.variable_scope('discriminator') as scope:
-            conv_output_size = ((image_size//(2**conv_layers))**2) * conv_size * conv_layers
-            class_output_size = 2**int(math.log(conv_output_size//2, 2))
-            #Create Layers
-            prev_layer = input_tensors
-            for i in range(conv_layers): #Convolutional layers
-                prev_layer = conv2d(prev_layer, conv_size*(i+1), name='convolution_%d'%i, norm=(i != 0))
-            prev_layer = [tf.reshape(layer, [-1, conv_output_size]) for layer in prev_layer]
-            for i in range(class_layers): #Classification layers
-                prev_layer = relu_dropout(prev_layer, class_output_size, self._dropout, 'classification_%d'%i)
-            prev_layer = linear(prev_layer, 1, 'output')
-        return prev_layer
 
     def __variation_summary__(self):
         """Create summaries for pixel variation"""
