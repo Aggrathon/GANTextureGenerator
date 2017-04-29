@@ -6,7 +6,7 @@ from operators import linear, conv2d, relu_dropout, conv2d_transpose, conv2d_tra
 
 
 def image_encoder(input_tensors, name='encoder', image_size=64, convolutions=5, base_width=32,
-                  fully_connected=1, dropout=0.4, output_size=1):
+                  fully_connected=1, dropout=0.4, output_size=1, logit=False):
     """Create a network for reducing an image to a 1D tensor"""
     conv_output_size = ((image_size//(2**convolutions))**2) * base_width * convolutions
     assert conv_output_size != 0, "Invalid number of convolutions compared to the image size"
@@ -16,10 +16,14 @@ def image_encoder(input_tensors, name='encoder', image_size=64, convolutions=5, 
         prev_layer = input_tensors
         for i in range(convolutions): #Convolutional layers
             prev_layer = conv2d(prev_layer, base_width*(i+1), name='convolution_%d'%i, norm=(i != 0))
-        prev_layer = [tf.reshape(layer, [-1, conv_output_size]) for layer in prev_layer]
+        with tf.name_scope('reshape'):
+            prev_layer = [tf.reshape(layer, [-1, conv_output_size]) for layer in prev_layer]
         for i in range(fully_connected): #Fully connected layers
             prev_layer = relu_dropout(prev_layer, fc_output_size, dropout, 'fully_connected_%d'%i)
-        prev_layer = linear(prev_layer, output_size, 'output')
+        prev_layer = linear(prev_layer, output_size, 'logit')
+        if not logit:
+            with tf.name_scope('output'):
+                prev_layer = [tf.multiply(tf.nn.tanh(layer)+1, 0.5, name='output') for layer in prev_layer]
     return prev_layer
 
 def image_decoder(input_tensors, name='decoder', image_size=64, convolutions=5, base_width=32,

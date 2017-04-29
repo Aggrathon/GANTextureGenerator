@@ -16,7 +16,7 @@ class AutoGanGenerator(GANetwork):
 
     def setup_network(self):
         """Initialize the network if it is not done in the constructor"""
-        auto_code = image_encoder([self.image_input_scaled], 'autoencoder', self.image_size, self._dis_conv, self._dis_width, self._class_depth, self._dropout, self.input_size)[0]
+        auto_code = image_encoder([self.image_input_scaled], 'autoencoder', self.image_size, self._dis_conv, self._dis_width, self._class_depth, self._dropout, self.input_size, True)[0]
         self.generator_output, auto_out = image_decoder([self.generator_input, auto_code], 'generator', self.image_size, self._gen_conv, self._gen_width, self.input_size, self.batch_size, self.colors)
         self.image_output, self.image_grid_output = image_output([self.generator_output], 'output', self.image_size, self.grid_size)
         gen_logit, image_logit = image_encoder([self.generator_output, self.image_input_scaled], 'discriminator', self.image_size, self._dis_conv, self._dis_width, self._class_depth, self._dropout, 1)
@@ -29,27 +29,12 @@ class AutoGanGenerator(GANetwork):
             self.autoencoder_solver = image_optimizer('autoencoder', auto_var+gen_var, [self.image_input_scaled], [auto_out], *self.learning_rate, summary=self.log)
 
 
-    def __autoencoder_solver__(self, decoder_result):
-        #Decoder
-        with tf.variable_scope('decoder_loss'):
-            #Optimizer
-            loss = tf.reduce_mean(tf.pow(decoder_result-self.image_input_scaled, 2))
-            optimizer = tf.train.AdamOptimizer(*self.learning_rate)
-            variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='autoencoder')
-            auto_solver = optimizer.minimize(loss, var_list=variables)
-        return auto_solver
-
-    def random_input(self):
-        """Creates a random input for the generator"""
-        return np.random.uniform(-1.0, 1.0, size=[self.batch_size, self.input_size])
-
-
     def __training_iteration__(self, session, i):
         feed_dict = {
             self.image_input: self.image_manager.get_batch(),
             self.generator_input: self.random_input()
         }
-        if i % int(np.log10(i//2+1)) == 0:
+        if i % int(np.log10(i//2+10)) == 0:
             session.run([self.discriminator_solver, self.autoencoder_solver], feed_dict=feed_dict)
         else:
             session.run([self.generator_solver, self.discriminator_solver], feed_dict=feed_dict)
