@@ -165,12 +165,13 @@ class GANetwork():
                 print("To view the progress run 'python -m tensorflow.tensorboard --logdir %s'"%LOG_DIR)
             print("To generate images using the trained network run 'python generate.py %s'"%self.name)
             print()
+            time_per = 10
             for i in range(start_iteration, start_iteration+batches+1):
                 self.__training_iteration__(session, i)
                 #Print progress
                 if i%print_interval == 0:
                     curr_time = timer()
-                    time_per = (curr_time-last_time)/print_interval
+                    time_per = time_per*0.6 + (curr_time-last_time)/print_interval*0.4
                     time = curr_time - start_time
                     print("Iteration: %04d    Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
                         (i, time//3600, time%3600//60, time%60, time_per), end='\r')
