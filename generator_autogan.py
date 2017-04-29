@@ -3,7 +3,7 @@ import math
 
 import tensorflow as tf
 
-from network import GANetwork
+from generator_gan import GANetwork
 from operators import conv2d, relu_dropout, linear
 
 class AutoGanGenerator(GANetwork):

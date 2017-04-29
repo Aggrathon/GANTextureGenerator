@@ -1,7 +1,7 @@
 
 import os
-from network import GANetwork
-from autogan import AutoGanGenerator
+from generator_gan import GANetwork
+from generator_autogan import AutoGanGenerator
 
 
 CONFIG = {
