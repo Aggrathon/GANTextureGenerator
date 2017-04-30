@@ -1,7 +1,6 @@
 
 import os
 from generator_gan import GANetwork
-from generator_autogan import AutoGanGenerator
 
 
 CONFIG = {
@@ -14,8 +13,7 @@ CONFIG = {
 }
 
 def get_network(name, **config):
-    #return GANetwork(name, **config)
-    return AutoGanGenerator(name=name, **config)
+    return GANetwork(name, **config)
 
 
 if __name__ == '__main__':

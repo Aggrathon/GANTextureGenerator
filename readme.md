@@ -35,9 +35,8 @@ Here are 16 generated stone walls after 112 000 training iterations. However the
     - no improvement beyond 20 000 iterations
     - Better optimization?
         - Better cost function?
+            - scale discriminator- & generatorloss based on each other?
         - Better network configuration?
-            - Add autoencoder to setup better generator
-                - Run each log5/2 iterations
  - Try bigger sizes than 64x64
     - maybe through an upscaling GAN
  - Try making repeatable textures

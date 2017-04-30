@@ -26,7 +26,7 @@ class AutoGanGenerator(GANetwork):
             dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
             self.generator_solver = batch_optimizer('generator', gen_var, [gen_logit], 1-self._y_offset, '', None, 0, '', *self.learning_rate, global_step=self.iterations, summary=self.log)
             self.discriminator_solver = batch_optimizer('discriminator', dis_var, [image_logit], 1-self._y_offset, 'real_', [gen_logit], self._y_offset, 'fake_', *self.learning_rate, summary=self.log)
-            self.autoencoder_solver = image_optimizer('autoencoder', auto_var+gen_var, [self.image_input_scaled], [auto_out], *self.learning_rate, summary=self.log)
+            self.autoencoder_solver = image_optimizer('autoencoder', auto_var+gen_var, [self.image_input_scaled], [auto_out], self.learning_rate[0]*2, self.learning_rate[1], self.learning_rate[2], summary=self.log)
 
 
     def __training_iteration__(self, session, i):
@@ -34,7 +34,7 @@ class AutoGanGenerator(GANetwork):
             self.image_input: self.image_manager.get_batch(),
             self.generator_input: self.random_input()
         }
-        if i % int(np.log10(i//2+10)) == 0:
+        if i <= 200:
             session.run([self.discriminator_solver, self.autoencoder_solver], feed_dict=feed_dict)
         else:
             session.run([self.generator_solver, self.discriminator_solver], feed_dict=feed_dict)

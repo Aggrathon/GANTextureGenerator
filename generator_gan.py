@@ -166,7 +166,7 @@ class GANetwork():
             print("To generate images using the trained network run 'python generate.py %s'"%self.name)
             print()
             time_per = 10
-            for i in range(start_iteration, start_iteration+batches+1):
+            for i in range(start_iteration+1, start_iteration+batches+1):
                 self.__training_iteration__(session, i)
                 #Print progress
                 if i%print_interval == 0:
@@ -194,7 +194,7 @@ class GANetwork():
 
 class SummaryLogger():
     """Log the progress of training to tensorboard (and some progress output to the console)"""
-    def __init__(self, network, session, iteration, summary_interval=20, image_interval=500):
+    def __init__(self, network, session, iteration, summary_interval=20, image_interval=50):
         self.session = session
         self.gan = network
         self.image_interval = image_interval
