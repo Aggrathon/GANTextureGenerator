@@ -13,6 +13,18 @@ def lerp_int(value_a: int, value_b: int, perc: float, epsilon :float=0.01):
 	else:
 		return int(value_a + perc*(value_b-value_a))
 
+class WithNone():
+	def __enter__(self):
+		return self
+	def __exit__(self, type, value, traceback):
+		pass
+
+def openif_scope(name=None):
+	if name is None:
+		return WithNone()
+	else:
+		return tf.variable_scope(name)
+
 
 # Variable Creation
 
@@ -43,16 +55,15 @@ def lrelu(tensor, leak: float=0.2):
 
 # Network Layers
 
-def conv2d(tensors, output_size: int, name: str='conv2d', norm: bool=True, stddev: float=0.02, term: float=0.01, summary: bool=True):
+def conv2d(tensors, output_size: int, name: str='conv2d', stddev: float=0.02, term: float=0.01, summary: bool=True):
 	"""Create a convolutional layer"""
 	with tf.variable_scope(name):
 		weight, bias = weight_bias([5, 5, int(tensors[0].get_shape()[-1]), output_size], stddev, term, summary)
 		output = []
 		for tensor in tensors:
 			conv = tf.nn.conv2d(tensor, weight, [1, 2, 2, 1], "SAME")
-			if norm:
-				conv = tf.contrib.layers.batch_norm(conv, decay=0.9, updates_collections=None, scale=False,
-					trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
+			conv = tf.contrib.layers.batch_norm(conv, decay=0.9, updates_collections=None, scale=False,
+				trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
 			output.append(lrelu(tf.nn.bias_add(conv, bias)))
 		return output
 
@@ -78,7 +89,7 @@ def linear(tensors, output_size: int, name: str='linear', stddev: float=0.02, te
 		weight, bias = weight_bias([tensors[0].get_shape()[-1], output_size], stddev, term, summary)
 		return [tf.matmul(tensor, weight) + bias for tensor in tensors]
 
-def conv2d_transpose(tensors, batch_size=1, conv_size=32, name: str='conv2d_transpose', norm: bool=True, stddev: float=0.02, term: float=0.01, summary: bool=True):
+def conv2d_transpose(tensors, batch_size=1, conv_size=32, name: str='conv2d_transpose', stddev: float=0.02, term: float=0.01, summary: bool=True):
 	"""Create a transpose convolutional layer"""
 	with tf.variable_scope(name):
 		tensor_shape = tensors[0].get_shape()
@@ -87,9 +98,8 @@ def conv2d_transpose(tensors, batch_size=1, conv_size=32, name: str='conv2d_tran
 		output = []
 		for tensor in tensors:
 			deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 2, 2, 1])
-			if norm:
-				deconv = tf.contrib.layers.batch_norm(deconv, decay=0.9, updates_collections=None, scale=False,
-					trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
+			deconv = tf.contrib.layers.batch_norm(deconv, decay=0.9, updates_collections=None, scale=False,
+				trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
 			output.append(tf.nn.relu(tf.nn.bias_add(deconv, bias)))
 		return output
 

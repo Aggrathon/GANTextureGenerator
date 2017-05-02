@@ -2,11 +2,11 @@
 import tensorflow as tf
 import numpy as np
 
-from operators import linear, conv2d, relu_dropout, conv2d_transpose, conv2d_transpose_tanh, expand_relu
+from operators import linear, conv2d, relu_dropout, conv2d_transpose, conv2d_transpose_tanh, expand_relu, openif_scope
 
 
 def image_encoder(input_tensors, name='encoder', image_size=64, convolutions=5, base_width=32,
-                  fully_connected=1, dropout=0.4, output_size=1, logit=False):
+                  fully_connected=1, dropout=0.4, output_size=1, logit=True):
     """Create a network for reducing an image to a 1D tensor"""
     conv_output_size = ((image_size//(2**convolutions))**2) * base_width * convolutions
     assert conv_output_size != 0, "Invalid number of convolutions compared to the image size"
@@ -15,7 +15,7 @@ def image_encoder(input_tensors, name='encoder', image_size=64, convolutions=5, 
         #Create Layers
         prev_layer = input_tensors
         for i in range(convolutions): #Convolutional layers
-            prev_layer = conv2d(prev_layer, base_width*(i+1), name='convolution_%d'%i, norm=(i != 0))
+            prev_layer = conv2d(prev_layer, base_width*(i+1), name='convolution_%d'%i)
         with tf.name_scope('reshape'):
             prev_layer = [tf.reshape(layer, [-1, conv_output_size]) for layer in prev_layer]
         for i in range(fully_connected): #Fully connected layers
@@ -89,6 +89,46 @@ def batch_optimizer(name, variables, positive_tensors=None, positive_value=1, po
         else:
             solver = adam.minimize(loss, var_list=variables, global_step=global_step)
         return solver
+
+def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=0, real_val=1, loss_scaling=True,
+                  learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99, global_step=None, summary=True):
+    """Create an optimizer for a GAN"""
+    with openif_scope(name):
+        #generator
+        with tf.variable_scope('generator'):
+            gen_labels = tf.fill(tf.shape(fake_tensor), real_val)
+            gen_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_tensor, labels=gen_labels), name='loss')
+            if summary:
+                tf.summary.scalar('loss', gen_loss)
+            gen_opt = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2)
+        #discriminator
+        with tf.variable_scope('discriminator'):
+            dis_real_labels = tf.fill(tf.shape(real_tensor), real_val)
+            dis_real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=real_tensor, labels=dis_real_labels), name='real_loss')
+            dis_fake_labels = tf.fill(tf.shape(fake_tensor), false_val)
+            dis_fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_tensor, labels=dis_fake_labels), name='fake_loss')
+            dis_loss = tf.multiply(dis_fake_loss+dis_real_loss, 0.5, name="loss")
+            if summary:
+                tf.summary.scalar('loss', dis_loss)
+                tf.summary.scalar('real_loss', dis_real_loss)
+                tf.summary.scalar('fake_loss', dis_fake_loss)
+            dis_opt = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2)
+        #optimizers
+        with tf.variable_scope('optimizers'):
+            if loss_scaling:
+                scale = tf.clip_by_value(gen_loss/dis_loss, 0.5, 2.0, 'scale')
+                gen_loss = gen_loss*scale
+                dis_loss = dis_loss/scale
+                if summary:
+                    less = tf.minimum(2*scale-2, 0) #]0.5 - 1.0[ => ]-1.0 - 0.0[
+                    more = tf.maximum(scale-1, 0) #]1.0 - 2.0[ => ]0.0 - 1.0[
+                    tf.summary.scalar('scaling', more+less)
+            if global_step is None:
+                gen_solver = gen_opt.minimize(gen_loss, var_list=gen_vars)
+            else:
+                gen_solver = gen_opt.minimize(gen_loss, var_list=gen_vars, global_step=global_step)
+            dis_solver = dis_opt.minimize(dis_loss, var_list=dis_vars)
+        return gen_solver, dis_solver
 
 def image_optimizer(name, variables, real_images, fake_images,
                     learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99, summary=True):
