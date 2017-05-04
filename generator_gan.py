@@ -60,6 +60,7 @@ class GANetwork():
         #Training variables
         self.learning_rate = (learning_rate, learning_momentum, learning_momentum2)
         self._y_offset = y_offset
+        self.current_scale = 1.0
         #Setup Images
         if image_manager is None:
             self.image_manager = ImageVariations(image_size=image_size, batch_size=batch_size, colored=(colors == 3))
@@ -89,9 +90,8 @@ class GANetwork():
         gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
         dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
         self.generator_solver, self.discriminator_solver, self.scale = \
-            gan_optimizer('train', gen_var, dis_var, gen_logit, image_logit, self._y_offset, 1-self._y_offset, False,
+            gan_optimizer('train', gen_var, dis_var, gen_logit, image_logit, self._y_offset, 1-self._y_offset,
                           *self.learning_rate, global_step=self.iterations, summary=self.log)
-
 
 
     def random_input(self):
@@ -149,15 +149,14 @@ class GANetwork():
             self.image_input: self.image_manager.get_batch(),
             self.generator_input: self.random_input()
         }
-        _,_,scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
-        #Train the worse performing network more
-        if scale < 1:
-            session.run([self.discriminator_solver], feed_dict={
-                self.image_input: self.image_manager.get_batch(),
-                self.generator_input: self.random_input()
-            })
-        else:
-            session.run([self.generator_solver], feed_dict={self.generator_input: self.random_input()})
+        if i < 500: #Train both networks if iterations < 500
+            _,_,self.current_scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
+        elif self.current_scale > 1.3: #Train only the worse performing network
+            _,self.current_scale = session.run([self.generator_solver, self.scale], feed_dict=feed_dict)
+        elif self.current_scale > 0.7: # Train both networks if within 30% margin
+            _,_,self.current_scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
+        else: #Train only the worse performing network
+            _,self.current_scale = session.run([self.discriminator_solver, self.scale], feed_dict=feed_dict)
 
 
     def train(self, batches=100000, print_interval=1):

@@ -90,7 +90,7 @@ def batch_optimizer(name, variables, positive_tensors=None, positive_value=1, po
             solver = adam.minimize(loss, var_list=variables, global_step=global_step)
         return solver
 
-def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=0, real_val=1, loss_scaling=True,
+def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=0, real_val=1,
                   learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99, global_step=None, summary=True):
     """Create an optimizer for a GAN"""
     with openif_scope(name):
@@ -107,26 +107,20 @@ def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=
             dis_real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=real_tensor, labels=dis_real_labels), name='real_loss')
             dis_fake_labels = tf.fill(tf.shape(fake_tensor), false_val)
             dis_fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_tensor, labels=dis_fake_labels), name='fake_loss')
-            dis_loss = tf.add(dis_fake_loss, dis_real_loss, name="loss")
+            dis_loss = tf.multiply(dis_fake_loss+dis_real_loss, 0.75, name="loss")
             if summary:
                 tf.summary.scalar('loss', dis_loss)
                 tf.summary.scalar('real_loss', dis_real_loss)
                 tf.summary.scalar('fake_loss', dis_fake_loss)
             dis_opt = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2)
+        if summary:
+            scale = tf.clip_by_value(gen_loss/dis_loss, 0.5, 2.0, 'scale')
+            less = tf.minimum(2*scale-2, 0) #]0.5 - 1.0[ => ]-1.0 - 0.0[
+            more = tf.maximum(scale-1, 0) #]1.0 - 2.0[ => ]0.0 - 1.0[
+            tf.summary.scalar('relative_loss_comparison', more+less)
         #optimizers
         with tf.variable_scope('optimizers'):
-            if loss_scaling:
-                scale = tf.clip_by_value(gen_loss/dis_loss, 0.5, 2.0, 'scale')
-                gen_loss = gen_loss*scale
-                dis_loss = dis_loss/scale
-                if summary:
-                    less = tf.minimum(2*scale-2, 0) #]0.5 - 1.0[ => ]-1.0 - 0.0[
-                    more = tf.maximum(scale-1, 0) #]1.0 - 2.0[ => ]0.0 - 1.0[
-                    tf.summary.scalar('scaling', more+less)
-            if global_step is None:
-                gen_solver = gen_opt.minimize(gen_loss, var_list=gen_vars)
-            else:
-                gen_solver = gen_opt.minimize(gen_loss, var_list=gen_vars, global_step=global_step)
+            gen_solver = gen_opt.minimize(gen_loss, var_list=gen_vars, global_step=global_step)
             dis_solver = dis_opt.minimize(dis_loss, var_list=dis_vars)
         return gen_solver, dis_solver, gen_loss/dis_loss
 
