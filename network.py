@@ -107,7 +107,7 @@ def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=
             dis_real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=real_tensor, labels=dis_real_labels), name='real_loss')
             dis_fake_labels = tf.fill(tf.shape(fake_tensor), false_val)
             dis_fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_tensor, labels=dis_fake_labels), name='fake_loss')
-            dis_loss = tf.multiply(dis_fake_loss+dis_real_loss, 0.5, name="loss")
+            dis_loss = tf.add(dis_fake_loss, dis_real_loss, name="loss")
             if summary:
                 tf.summary.scalar('loss', dis_loss)
                 tf.summary.scalar('real_loss', dis_real_loss)
@@ -128,7 +128,7 @@ def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=
             else:
                 gen_solver = gen_opt.minimize(gen_loss, var_list=gen_vars, global_step=global_step)
             dis_solver = dis_opt.minimize(dis_loss, var_list=dis_vars)
-        return gen_solver, dis_solver
+        return gen_solver, dis_solver, gen_loss/dis_loss
 
 def image_optimizer(name, variables, real_images, fake_images,
                     learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99, summary=True):

@@ -77,7 +77,7 @@ class GANetwork():
             self.image_input_scaled = tf.subtract(tf.to_float(self.image_input)/127.5, 1, name='image_scaling')
         self.generator_output = None
         self.image_output = self.image_grid_output = None
-        self.generator_solver = self.discriminator_solver = None
+        self.generator_solver = self.discriminator_solver = self.scale = None
         if setup:
             self.setup_network()
 
@@ -88,8 +88,8 @@ class GANetwork():
         gen_logit, image_logit = image_encoder([self.generator_output, self.image_input_scaled], 'discriminator', self.image_size, self._dis_conv, self._dis_width, self._class_depth, self._dropout, 1)
         gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
         dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
-        self.generator_solver, self.discriminator_solver = \
-            gan_optimizer('train', gen_var, dis_var, gen_logit, image_logit, self._y_offset, 1-self._y_offset, True,
+        self.generator_solver, self.discriminator_solver, self.scale = \
+            gan_optimizer('train', gen_var, dis_var, gen_logit, image_logit, self._y_offset, 1-self._y_offset, False,
                           *self.learning_rate, global_step=self.iterations, summary=self.log)
 
 
@@ -149,7 +149,16 @@ class GANetwork():
             self.image_input: self.image_manager.get_batch(),
             self.generator_input: self.random_input()
         }
-        session.run([self.generator_solver, self.discriminator_solver], feed_dict=feed_dict)
+        _,_,scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
+        #Train the worse performing network more
+        if scale < 1:
+            session.run([self.discriminator_solver], feed_dict={
+                self.image_input: self.image_manager.get_batch(),
+                self.generator_input: self.random_input()
+            })
+        else:
+            session.run([self.generator_solver], feed_dict={self.generator_input: self.random_input()})
+
 
     def train(self, batches=100000, print_interval=1):
         """Train the network for a number of batches (continuing if there is an existing model)"""
