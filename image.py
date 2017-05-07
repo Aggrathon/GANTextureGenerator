@@ -17,7 +17,7 @@ class ImageVariations():
                  in_directory='input', out_directory='output',
                  rotation_range=(-15, 15), brightness_range=(0.7, 1.2),
                  saturation_range=(0.7, 1.), contrast_range=(0.9, 1.3),
-                 size_range=(1.0, 0.8)):
+                 size_range=(0.6, 0.8)):
         #Parameters
         self.image_size = image_size
         self.batch_size = batch_size
@@ -46,7 +46,7 @@ class ImageVariations():
         """Start the threads that are generating image variations"""
         self.closing = True
         self.event.set()
-        self.files = os.listdir(self.in_directory)
+        self.files =  [f for f in os.listdir(self.in_directory) if os.path.isfile(os.path.join(self.in_directory, f))]
         num_threads = os.cpu_count()
         if num_threads is None:
             num_threads = 4
