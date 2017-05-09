@@ -4,8 +4,9 @@ It is initially setup for creating more texture-like images where some cropping,
 
 
 ## Examples
-![Example Image](/examples/example_01.png)  
-Here are 16 generated stone walls after 112 000 training iterations. However the quality didn't seem to improve much past 20 000 iterations, meaning the model still has to be refined.
+### Sonewalls
+![Example Image](/examples/example_01.png)
+![Example Image](/examples/example_02.png)
 
 ## Usage
 
@@ -32,10 +33,9 @@ Here are 16 generated stone walls after 112 000 training iterations. However the
 
 ## TODO
  - Fix the stalled learning
-    - no improvement beyond 20 000 iterations
+    - only small improvement beyond 20 000 iterations (mostly shuffling)
     - Better optimization?
         - Better cost function?
-            - scale discriminator- & generatorloss based on each other?
         - Better network configuration?
  - Try bigger sizes than 64x64
     - maybe through an upscaling GAN

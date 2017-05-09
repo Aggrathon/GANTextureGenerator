@@ -1,6 +1,7 @@
 
 import os
 from generator_gan import GANetwork
+from image import ImageVariations
 
 
 CONFIG = {
@@ -8,12 +9,21 @@ CONFIG = {
     'batch_size': 192,
     'generator_base_width': 32,
     'image_size': 64,
-    'discriminator_convolutions': 5,
-    'generator_convolutions': 5,
+    'input_size': 128,
+    'discriminator_convolutions': 4,
+    'generator_convolutions': 4,
+}
+
+IMAGE_CONFIG = {
+    'rotation_range': (-30, 30),
+    'brightness_range': (0.7, 1.2),
+    'saturation_range': (0.7, 1.2),
+    'contrast_range': (0.8, 1.2),
+    'size_range': (1.0, 0.95)
 }
 
 def get_network(name, **config):
-    return GANetwork(name, **config)
+    return GANetwork(name, image_manager=ImageVariations(**IMAGE_CONFIG), **config)
 
 
 if __name__ == '__main__':
