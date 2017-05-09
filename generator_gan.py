@@ -91,7 +91,7 @@ class GANetwork():
         dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
         self.generator_solver, self.discriminator_solver, self.scale = \
             gan_optimizer('train', gen_var, dis_var, gen_logit, image_logit, self._y_offset, 1-self._y_offset,
-                          *self.learning_rate, global_step=self.iterations, summary=self.log)
+                          *self.learning_rate, learning_rate_pivot=10000, global_step=self.iterations, summary=self.log)
 
 
     def random_input(self):
@@ -190,10 +190,14 @@ class GANetwork():
                 if timer() - last_save > 1800:
                     saver.save(session, os.path.join(self.directory, self.name))
                     last_save = timer()
+            print("Saving the network")
+            saver.save(session, os.path.join(self.directory, self.name))
+            if self.log:
+                logger.close()
+            session.close()
         except KeyboardInterrupt:
             print()
-            print("Stopping the training", end='')
-        finally:
+            print("Stopping the training")
             saver.save(session, os.path.join(self.directory, self.name))
             if self.log:
                 logger.close()

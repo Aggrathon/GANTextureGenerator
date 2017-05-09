@@ -91,9 +91,14 @@ def batch_optimizer(name, variables, positive_tensors=None, positive_value=1, po
         return solver
 
 def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=0, real_val=1,
-                  learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99, global_step=None, summary=True):
+                  learning_rate=0.001, learning_momentum=0.9, learning_momentum2=0.99,
+                  learning_rate_pivot=0, global_step=None, summary=True):
     """Create an optimizer for a GAN"""
     with openif_scope(name):
+        #learning rate scaling
+        if learning_rate_pivot > 0:
+            scaler = tf.sqrt(tf.div(tf.to_float(global_step), float(learning_rate_pivot))+1)
+            learning_rate = tf.div(learning_rate, scaler)
         #generator
         with tf.variable_scope('generator'):
             gen_labels = tf.fill(tf.shape(fake_tensor), real_val)
