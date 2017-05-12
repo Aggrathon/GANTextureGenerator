@@ -12,9 +12,13 @@ CONFIG = {
     'input_size': 128,
     'discriminator_convolutions': 4,
     'generator_convolutions': 4,
+    'learning_rate': 0.0003,
+    'learning_momentum': 0.8,
+    'learning_momentum2': 0.95
 }
 
 IMAGE_CONFIG = {
+    'pool_renew': 4,
     'rotation_range': (-30, 30),
     'brightness_range': (0.7, 1.2),
     'saturation_range': (0.7, 1.2),

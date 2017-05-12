@@ -158,6 +158,7 @@ class GANetwork():
         elif self.current_scale > 1.3: #Train only the worse performing network (do some additional faster iterations)
             session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
             session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
+            session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
             _,self.current_scale = session.run([self.generator_solver, self.scale], feed_dict=feed_dict)
         elif self.current_scale > 0.7: # Train both networks if within 30% margin
             _,_,self.current_scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
@@ -227,7 +228,10 @@ class SummaryLogger():
         #Save image
         if iteration%self.image_interval == 0:
             #Hack to make tensorboard show multiple images, not just the latest one
-            dict = {self.gan.generator_input: self.batch_input, self.gan.image_input: self.gan.image_manager.get_batch()}
+            feed_dict = {
+                self.gan.generator_input: self.batch_input,
+                self.gan.image_input: self.gan.image_manager.get_old_batch()
+            }
             image, summary = self.session.run(
                 [tf.summary.image(
                     'training/iteration/%d'%iteration,
@@ -235,11 +239,11 @@ class SummaryLogger():
                     max_outputs=1,
                     collections=['generated_images']
                 ), self.summary],
-                feed_dict=dict
+                feed_dict=feed_dict
             )
             self.writer.add_summary(image, iteration)
             self.writer.add_summary(summary, iteration)
-        elif iteration%(np.log10(self.summary_interval)*1.8//4*10+10) == 0:
+        elif iteration%self.summary_interval == 0:
             feed_dict = {
                 self.gan.generator_input: self.gan.random_input(),
                 self.gan.image_input: self.gan.image_manager.get_old_batch()
@@ -250,4 +254,4 @@ class SummaryLogger():
 
     def close(self):
         self.writer.close()
-        print()
+

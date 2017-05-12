@@ -120,9 +120,8 @@ def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=
             dis_opt = tf.train.AdamOptimizer(learning_rate, learning_momentum, learning_momentum2)
         scale = tf.divide(gen_loss, dis_loss*dicriminator_scaling_favor, name='scale')
         if summary:
-            scale_clip = tf.clip_by_value(gen_loss/dis_loss, 0.5, 2.0)
-            less = tf.minimum(2*scale_clip-2, 0) #]0.5 - 1.0[ => ]-1.0 - 0.0[
-            more = tf.maximum(scale_clip-1, 0) #]1.0 - 2.0[ => ]0.0 - 1.0[
+            less = (tf.sign(scale)-1.)*0.5/scale        # -1/scale if scale < 1.0
+            more = (tf.sign(scale)+1.)*0.5*(scale-1.0)  # 1*scale-1 if scale > 1.0
             tf.summary.scalar('relative_loss_comparison', more+less)
         #optimizers
         with tf.variable_scope('optimizers'):

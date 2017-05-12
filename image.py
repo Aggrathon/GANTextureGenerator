@@ -72,6 +72,7 @@ class ImageVariations():
         self.event.set()
         if len(self.pool[self.pool_index]) == 0:    #Check and fill image pool
             self.pool[self.pool_index] = [self.queue.get() for _ in range(self.batch_size)]
+            np.random.shuffle(self.pool[self.pool_index])
         images = self.pool[self.pool_index]
         for i in range(self.pool_renew):    #Replace old images
             self.pool[self.pool_index][(self.pool_iteration+i)%self.batch_size] = self.queue.get()
@@ -81,11 +82,11 @@ class ImageVariations():
             self.pool_iteration = (self.pool_iteration+self.pool_renew)%self.batch_size
         self.event.clear()
         return images
-    
+
     def get_old_batch(self):
         if self.closing or len(self.pool[self.pool_index]) == 0:
             return self.get_batch()
-        return self.pool(self.pool_index-1)
+        return self.pool[self.pool_index-1]
 
     def __thread__(self, files):
         if self.colored:
