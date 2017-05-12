@@ -16,7 +16,8 @@ class GANetwork():
     def __init__(self, name, setup=True, image_size=64, colors=3, batch_size=64, directory='network', image_manager=None,
                  input_size=64, learning_rate=0.0002, dropout=0.4, generator_convolutions=5, generator_base_width=32,
                  discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1, grid_size=4,
-                 log=True, y_offset=0.1, learning_momentum=0.6, learning_momentum2=0.9):
+                 log=True, y_offset=0.1, learning_momentum=0.6, learning_momentum2=0.9, learning_pivot=10000,
+                 dicriminator_scaling_favor=4):
         """
         Create a GAN for generating images
         Args:
@@ -40,6 +41,8 @@ class GANetwork():
           y_offset: how much should the "right" answers vary from 1s and 0s
           learning_momentum: the beta1 momentum for ADAM
           learning_momentum2: the beta2 momentum for ADAM
+          learning_pivot: the point where the learning rate starts declining
+          dicriminator_scaling_favor: how much should the discriminator be favored when selecting the network to train
         """
         self.name = name
         self.image_size = image_size
@@ -58,9 +61,10 @@ class GANetwork():
         self._class_depth = classification_depth
         self._dropout = dropout
         #Training variables
-        self.learning_rate = (learning_rate, learning_momentum, learning_momentum2)
+        self.learning_rate = (learning_rate, learning_momentum, learning_momentum2, learning_pivot)
         self._y_offset = y_offset
         self.current_scale = 1.0
+        self._dis_scale = dicriminator_scaling_favor
         #Setup Images
         if image_manager is None:
             self.image_manager = ImageVariations(image_size=image_size, batch_size=batch_size, colored=(colors == 3))
@@ -90,8 +94,8 @@ class GANetwork():
         gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
         dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
         self.generator_solver, self.discriminator_solver, self.scale = \
-            gan_optimizer('train', gen_var, dis_var, gen_logit, image_logit, self._y_offset, 1-self._y_offset,
-                          *self.learning_rate, learning_rate_pivot=10000, global_step=self.iterations, summary=self.log)
+            gan_optimizer('train', gen_var, dis_var, gen_logit, image_logit, 0., 1-self._y_offset,
+                          *self.learning_rate, self.iterations, self._dis_scale, summary=self.log)
 
 
     def random_input(self):
@@ -151,7 +155,9 @@ class GANetwork():
         }
         if i < 500: #Train both networks if iterations < 500
             _,_,self.current_scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
-        elif self.current_scale > 1.3: #Train only the worse performing network
+        elif self.current_scale > 1.3: #Train only the worse performing network (do some additional faster iterations)
+            session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
+            session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
             _,self.current_scale = session.run([self.generator_solver, self.scale], feed_dict=feed_dict)
         elif self.current_scale > 0.7: # Train both networks if within 30% margin
             _,_,self.current_scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
@@ -176,6 +182,7 @@ class GANetwork():
             time_per = 10
             for i in range(start_iteration+1, start_iteration+batches+1):
                 self.__training_iteration__(session, i)
+                session.run(self.iterations.assign(i))
                 #Print progress
                 if i%print_interval == 0:
                     curr_time = timer()
@@ -190,17 +197,14 @@ class GANetwork():
                 if timer() - last_save > 1800:
                     saver.save(session, os.path.join(self.directory, self.name))
                     last_save = timer()
-            print("Saving the network")
-            saver.save(session, os.path.join(self.directory, self.name))
-            if self.log:
-                logger.close()
-            session.close()
         except KeyboardInterrupt:
             print()
             print("Stopping the training")
-            saver.save(session, os.path.join(self.directory, self.name))
+        finally:
             if self.log:
                 logger.close()
+            print("Saving the network")
+            saver.save(session, os.path.join(self.directory, self.name))
             session.close()
 
 
@@ -236,9 +240,12 @@ class SummaryLogger():
             self.writer.add_summary(image, iteration)
             self.writer.add_summary(summary, iteration)
         elif iteration%(np.log10(self.summary_interval)*1.8//4*10+10) == 0:
-            dict = {self.gan.generator_input: self.gan.random_input(), self.gan.image_input: self.gan.image_manager.get_batch()}
+            feed_dict = {
+                self.gan.generator_input: self.gan.random_input(),
+                self.gan.image_input: self.gan.image_manager.get_old_batch()
+            }
             #Save summary
-            summary = self.session.run(self.summary, feed_dict=dict)
+            summary = self.session.run(self.summary, feed_dict=feed_dict)
             self.writer.add_summary(summary, iteration)
 
     def close(self):
