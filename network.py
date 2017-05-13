@@ -112,7 +112,7 @@ def gan_optimizer(name, gen_vars, dis_vars, fake_tensor, real_tensor, false_val=
             dis_real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=real_tensor, labels=dis_real_labels), name='real_loss')
             dis_fake_labels = tf.fill(tf.shape(fake_tensor), float(false_val))
             dis_fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_tensor, labels=dis_fake_labels), name='fake_loss')
-            dis_loss = tf.add(dis_fake_loss, dis_real_loss, name="loss")
+            dis_loss = tf.add(dis_fake_loss, dis_real_loss*2, name="loss")
             if summary:
                 tf.summary.scalar('loss', dis_loss)
                 tf.summary.scalar('real_loss', dis_real_loss)

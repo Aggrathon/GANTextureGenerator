@@ -17,7 +17,7 @@ class GANetwork():
                  input_size=64, learning_rate=0.0002, dropout=0.4, generator_convolutions=5, generator_base_width=32,
                  discriminator_convolutions=4, discriminator_base_width=32, classification_depth=1, grid_size=4,
                  log=True, y_offset=0.1, learning_momentum=0.6, learning_momentum2=0.9, learning_pivot=10000,
-                 dicriminator_scaling_favor=4):
+                 dicriminator_scaling_favor=3):
         """
         Create a GAN for generating images
         Args:
@@ -211,7 +211,7 @@ class GANetwork():
 
 class SummaryLogger():
     """Log the progress of training to tensorboard (and some progress output to the console)"""
-    def __init__(self, network, session, iteration, summary_interval=10, image_interval=500):
+    def __init__(self, network, session, iteration, summary_interval=20, image_interval=500):
         self.session = session
         self.gan = network
         self.image_interval = image_interval
