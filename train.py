@@ -12,7 +12,7 @@ CONFIG = {
     'input_size': 128,
     'discriminator_convolutions': 4,
     'generator_convolutions': 4,
-    'learning_rate': 0.0003,
+    'learning_rate': 0.0002,
     'learning_momentum': 0.8,
     'learning_momentum2': 0.95
 }

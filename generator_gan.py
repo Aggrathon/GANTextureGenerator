@@ -148,22 +148,28 @@ class GANetwork():
                 print("\nCreated a new network (%s)\n"%repr(e))
         return session, saver, start_iteration
 
-    def __training_iteration__(self, session, i):
-        feed_dict = {
+
+    def __get_feed_dict__(self):
+        return {
             self.image_input: self.image_manager.get_batch(),
             self.generator_input: self.random_input()
         }
-        if i < 500: #Train both networks if iterations < 500
-            _,_,self.current_scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
-        elif self.current_scale > 1.3: #Train only the worse performing network (do some additional faster iterations)
+
+    def __training_iteration__(self, session, i):
+        if i < 500:                     #Initialising iterations
+            if i < 100:
+                session.run([self.discriminator_solver], feed_dict=self.__get_feed_dict__())
+            else:
+                session.run([self.discriminator_solver, self.generator_solver], feed_dict=self.__get_feed_dict__())
+        elif i%20 == 0:                 #Check the scaling
+            _, _, self.current_scale = session.run([self.discriminator_solver, self.generator_solver, self.scale], feed_dict=self.__get_feed_dict__())
+        elif self.current_scale > 1.3:  #Train only the worse performing network (do some additional faster iterations)
             session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
             session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
-            session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
-            _,self.current_scale = session.run([self.generator_solver, self.scale], feed_dict=feed_dict)
-        elif self.current_scale > 0.7: # Train both networks if within 30% margin
-            _,_,self.current_scale = session.run([self.generator_solver, self.discriminator_solver, self.scale], feed_dict=feed_dict)
-        else: #Train only the worse performing network
-            _,self.current_scale = session.run([self.discriminator_solver, self.scale], feed_dict=feed_dict)
+        elif self.current_scale > 0.7:  #Train both networks if within 30% margin
+            session.run([self.discriminator_solver, self.generator_solver], feed_dict=self.__get_feed_dict__())
+        else:                           #Train only the worse performing network
+            session.run([self.discriminator_solver], feed_dict=self.__get_feed_dict__())
 
 
     def train(self, batches=100000, print_interval=1):
