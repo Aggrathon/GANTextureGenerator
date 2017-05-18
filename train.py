@@ -19,16 +19,15 @@ CONFIG = {
 
 IMAGE_CONFIG = {
     'pool_renew': 2,
-    'rotation_range': (-30, 30),
+    'rotation_range': (-20, 20),
     'brightness_range': (0.7, 1.2),
-    'saturation_range': (0.7, 1.2),
+    'saturation_range': (0.9, 1.5),
     'contrast_range': (0.8, 1.2),
     'size_range': (1.0, 0.95)
 }
 
 def get_network(name, **config):
     return GANetwork(name, image_manager=ImageVariations(**IMAGE_CONFIG), **config)
-
 
 if __name__ == '__main__':
     if len(os.sys.argv) < 2:

@@ -113,9 +113,12 @@ class ImageVariations():
         pos = (random.randrange(0, image.size[0]-size), random.randrange(0, image.size[1]-size))
         image = image.crop((pos[0], pos[1], pos[0]+size, pos[1]+size))
         #Rotate
-        size = image.size[0]/math.sqrt(2) #TODO claculate divisor from max angle instead of 45° (sqrt2)
-        offset = (image.size[0]-size)/2
         rotation = random.randint(*self.rotation_range)
+        sina = np.abs(np.sin(np.deg2rad(rotation)))
+        b = size / (1+sina)
+        a = sina*size / (1+sina)
+        size = int(np.sqrt(a*a + b*b))-1
+        offset = (image.size[0]-size)/2
         image = image.rotate(rotation).crop((offset, offset, offset+size, offset+size))
         #Transpose
         if random.random() < 0.5:
