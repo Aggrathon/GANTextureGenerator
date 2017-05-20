@@ -67,13 +67,11 @@ class GANetwork():
         self._dis_scale = dicriminator_scaling_favor
         #Setup Images
         if image_manager is None:
-            self.image_manager = ImageVariations(image_size=image_size, batch_size=batch_size, colored=(colors == 3))
+            self.image_manager = ImageVariations(image_size=image_size, colored=(colors == 3))
         else:
             self.image_manager = image_manager
-            self.image_manager.batch_size = batch_size
             self.image_manager.image_size = image_size
             self.image_manager.colored = (colors == 3)
-        self.image_manager.start_threads()
         #Setup Networks
         self.iterations = tf.Variable(0, name="training_iterations", trainable=False)
         with tf.variable_scope('input'):
@@ -151,7 +149,7 @@ class GANetwork():
 
     def __get_feed_dict__(self):
         return {
-            self.image_input: self.image_manager.get_batch(),
+            self.image_input: self.image_manager.get_batch(self.batch_size),
             self.generator_input: self.random_input()
         }
 
@@ -202,7 +200,7 @@ class GANetwork():
                     logger(i)
                 #Save network
                 if timer() - last_save > 1800:
-                    saver.save(session, os.path.join(self.directory, self.name))
+                    saver.save(session, os.path.join(self.directory, self.name), self.iterations)
                     last_save = timer()
         except KeyboardInterrupt:
             print()
@@ -234,10 +232,8 @@ class SummaryLogger():
         #Save image
         if iteration%self.image_interval == 0:
             #Hack to make tensorboard show multiple images, not just the latest one
-            feed_dict = {
-                self.gan.generator_input: self.batch_input,
-                self.gan.image_input: self.gan.image_manager.get_old_batch()
-            }
+            feed_dict = self.gan.__get_feed_dict__()
+            feed_dict[self.gan.generator_input] = self.batch_input,
             image, summary = self.session.run(
                 [tf.summary.image(
                     'training/iteration/%d'%iteration,
@@ -250,10 +246,7 @@ class SummaryLogger():
             self.writer.add_summary(image, iteration)
             self.writer.add_summary(summary, iteration)
         elif iteration%self.summary_interval == 0:
-            feed_dict = {
-                self.gan.generator_input: self.gan.random_input(),
-                self.gan.image_input: self.gan.image_manager.get_old_batch()
-            }
+            feed_dict = self.gan.__get_feed_dict__()
             #Save summary
             summary = self.session.run(self.summary, feed_dict=feed_dict)
             self.writer.add_summary(summary, iteration)

@@ -18,7 +18,6 @@ CONFIG = {
 }
 
 IMAGE_CONFIG = {
-    'pool_renew': 2,
     'rotation_range': (-20, 20),
     'brightness_range': (0.7, 1.2),
     'saturation_range': (0.9, 1.5),

@@ -33,8 +33,8 @@ def image_decoder(input_tensors, name='decoder', image_size=64, convolutions=5, 
     assert conv_image_size*(2**convolutions) == image_size, "Images must be a multiple of two (and >= 2**convolutions)"
     with tf.variable_scope(name):
         prev_layer = expand_relu(input_tensors, [-1, conv_image_size, conv_image_size, base_width*2**(convolutions-1)], 'expand')
-        for i in range(convolutions-1):
-            prev_layer = conv2d_transpose(prev_layer, batch_size, 2**(convolutions-i-2)*base_width, 'convolution_%d'%i)
+        for i in range(convolutions):
+            prev_layer = conv2d_transpose(prev_layer, batch_size, 2**(convolutions-i-1)*base_width, 'convolution_%d'%i)
         prev_layer = conv2d_transpose_tanh(prev_layer, batch_size, colors, 'output')
     return prev_layer
 

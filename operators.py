@@ -110,8 +110,8 @@ def conv2d_transpose_tanh(tensors, batch_size=1, conv_size=32, name: str='conv2d
 		filt = tf.get_variable('filter', [5, 5, conv_size, tensor_shape[-1]], tf.float32, tf.random_normal_initializer(0, stddev), trainable=True)
 		output = []
 		for tensor in tensors:
-			conv_shape = [batch_size, int(tensor_shape[1]*2), int(tensor_shape[2]*2), conv_size]
-			deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 2, 2, 1])
+			conv_shape = [batch_size, int(tensor_shape[1]), int(tensor_shape[2]), conv_size]
+			deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 1, 1, 1])
 			output.append(tf.nn.tanh(deconv))
 		return output
 

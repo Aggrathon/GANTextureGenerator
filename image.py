@@ -1,30 +1,24 @@
 
-import math
 import os
 import random
 import time
-from threading import Event, Thread
+from multiprocessing import Pool
 
 import numpy as np
 from PIL import Image, ImageEnhance
 
-from queue import Queue
-
 
 class ImageVariations():
-    def __init__(self, image_size=64, batch_size=64, colored=True,
-                 pools=8, pool_renew=1,
+    def __init__(self, image_size=64, colored=True, pool_size=10000,
                  in_directory='input', out_directory='output',
                  rotation_range=(-15, 15), brightness_range=(0.7, 1.2),
                  saturation_range=(0.7, 1.), contrast_range=(0.9, 1.3),
                  size_range=(0.6, 0.8)):
         #Parameters
         self.image_size = image_size
-        self.batch_size = batch_size
         self.in_directory = in_directory
         self.out_directory = out_directory
-        self.pools = pools
-        self.pool_renew = pool_renew
+        self.images_count = pool_size
         #Variation Config
         self.rotation_range = rotation_range
         self.brightness_range = brightness_range
@@ -32,77 +26,55 @@ class ImageVariations():
         self.contrast_range = contrast_range
         self.size_range = size_range
         self.colored = colored
-        #Thread variables
-        self.pool = []
-        self.pool_index = 0
-        self.pool_iteration = 0
-        self.queue = Queue()
-        self.files = []
-        self.threads = []
-        self.event = Event()
-        self.closing = True
+        #Generate Images
+        self.index = 0
+        if self.images_count > 0:
+            if self.images_count > 20:
+                print("Processing Images")
+            files = [f for f in os.listdir(self.in_directory) if os.path.isfile(os.path.join(self.in_directory, f))]
+            np.random.shuffle(files)
+            mp = self.images_count//len(files)
+            rest = self.images_count%len(files)
+            if mp > 0:
+                pool = Pool()
+                images = pool.starmap(self.__generate_images__, [(f, mp) for f in files])
+                self.pool = [img for sub in images for img in sub]
+                pool.close()
+            else:
+                self.pool = []
+            self.pool += [img for sub in [self.__generate_images__(f, 1) for f in files[:rest]] for img in sub]
+            np.random.shuffle(self.pool)
 
-    def start_threads(self):
-        """Start the threads that are generating image variations"""
-        self.closing = True
-        self.event.set()
-        self.files =  [f for f in os.listdir(self.in_directory) if os.path.isfile(os.path.join(self.in_directory, f))]
-        num_threads = os.cpu_count()
-        if num_threads is None:
-            num_threads = 4
-        self.threads = [Thread(target=self.__thread__, args=(self.files[i::num_threads],), daemon=True)
-                        for i in range(num_threads)]
-        self.event.clear()
-        self.closing = False
-        for t in self.threads:
-            t.start()
-        if(self.pools > 1):
-            print('Processing input images')
-        self.pool = [[] for _ in range(self.pools)]
-
-    def stop_threads(self):
-        """Stop the threads that are generating image variations (freeing memory)"""
-        self.closing = True
-        self.event.set()
-
-    def get_batch(self):
-        """Get a batch of images as arrays"""
-        if self.closing:    #Start threads
-            self.start_threads()
-        self.event.set()
-        if len(self.pool[self.pool_index]) == 0:    #Check and fill image pool
-            self.pool[self.pool_index] = [self.queue.get() for _ in range(self.batch_size)]
-            np.random.shuffle(self.pool[self.pool_index])
-        images = self.pool[self.pool_index]
-        for i in range(self.pool_renew):    #Replace old images
-            self.pool[self.pool_index][(self.pool_iteration+i)%self.batch_size] = self.queue.get()
-        self.pool_index += 1
-        if self.pool_index == self.pools:   #Cycle indexes
-            self.pool_index = 0
-            self.pool_iteration = (self.pool_iteration+self.pool_renew)%self.batch_size
-        self.event.clear()
-        return images
-
-    def get_old_batch(self):
-        if self.closing or len(self.pool[self.pool_index]) == 0:
-            return self.get_batch()
-        return self.pool[self.pool_index-1]
-
-    def __thread__(self, files):
+    def __generate_images__(self, image_file, iterations):
         if self.colored:
-            images = [Image.open(os.path.join(self.in_directory, file)) for file in files]
+            image = Image.open(os.path.join(self.in_directory, image_file))
         else:
-            images = [Image.open(os.path.join(self.in_directory, file)).convert("L") for file in files]
-        index = 0
-        while not self.closing:
-            image = images[index]
-            index = (index+1)%len(images)
+            image = Image.open(os.path.join(self.in_directory, image_file)).convert("L")
+        def variation_to_numpy():
             arr = np.asarray(self.get_variation(image), dtype=np.float)
             if not self.colored:
                 arr.shape = arr.shape+(1,)
-            self.queue.put(arr)
-            while self.queue.qsize() >= self.batch_size and not self.closing:
-                self.event.wait()
+            return arr
+        return [variation_to_numpy() for _ in range(iterations)]
+
+
+    def get_batch(self, count):
+        """Get a batch of images as arrays"""
+        if self.index + count < len(self.pool):
+            batch = self.pool[self.index:self.index+count]
+            self.index += count
+            return batch
+        else:
+            batch  = self.pool[self.index:]
+            self.index = 0
+            np.random.shuffle(self.pool)
+            return batch + self.get_batch(count - len(batch))
+
+    def get_rnd_batch(self, count):
+        if count > len(self.pool):
+            return self.get_batch(count)
+        index = np.random.randint(0, len(self.pool)-count)
+        return self.pool[index:index+count]
 
     def get_variation(self, image):
         """Get an variation of the image according to the object config"""
@@ -155,19 +127,14 @@ class ImageVariations():
 
 if __name__ == "__main__":
     if len(os.sys.argv) > 1:
-        imgvariations = ImageVariations(pools=1, batch_size=int(os.sys.argv[1]))
-        imgvariations.start_threads()
-        images_batch = imgvariations.get_batch()
-        imgvariations.stop_threads()
-        for variant_id in range(int(os.sys.argv[1])):
+        num_imgs = int(os.sys.argv[1])
+        imgvariations = ImageVariations(pool_size=num_imgs)
+        images_batch = imgvariations.get_batch(num_imgs)
+        for variant_id in range(num_imgs):
             imgvariations.save_image(images_batch[variant_id], name="variant_%d"%variant_id)
-        print("Generated %s image variations as they are when fed to the network"%os.sys.argv[1])
+        print("Generated %i image variations as they are when fed to the network"%num_imgs)
     else:
         print("Testing memory requiremens")
-        imgvariations = ImageVariations()
-        input("Press Enter to continue... (all images loaded and pools filled)")
-        iml1 = imgvariations.get_batch()
-        iml2 = imgvariations.get_batch()
-        iml3 = imgvariations.get_batch()
-        iml4 = imgvariations.get_batch()
-        input("Press Enter to continue... (also four batches)")
+        num_imgs = 10000
+        imgvariations = ImageVariations(pool_size=num_imgs)
+        input("Press Enter to continue... (Pool countains %i images)"%num_imgs)
