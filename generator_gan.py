@@ -155,11 +155,11 @@ class GANetwork():
 
     def __training_iteration__(self, session, i):
         if i < 500:                     #Initialising iterations
-            if i < 100:
+            if i < 50:
                 session.run([self.discriminator_solver], feed_dict=self.__get_feed_dict__())
             else:
                 session.run([self.discriminator_solver, self.generator_solver], feed_dict=self.__get_feed_dict__())
-        elif i%20 == 0:                 #Check the scaling
+        elif i%10 == 0:                 #Check the scaling
             _, _, self.current_scale = session.run([self.discriminator_solver, self.generator_solver, self.scale], feed_dict=self.__get_feed_dict__())
         elif self.current_scale > 1.3:  #Train only the worse performing network (do some additional faster iterations)
             session.run(self.generator_solver, feed_dict={self.generator_input: self.random_input()})
@@ -193,8 +193,8 @@ class GANetwork():
                     curr_time = timer()
                     time_per = time_per*0.6 + (curr_time-last_time)/print_interval*0.4
                     time = curr_time - start_time
-                    print("Iteration: %04d    Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
-                        (i, time//3600, time%3600//60, time%60, time_per), end='\r')
+                    print("\rIteration: %04d    Time: %02d:%02d:%02d  (%02.1fs / iteration)" % \
+                        (i, time//3600, time%3600//60, time%60, time_per), end='')
                     last_time = curr_time
                 if self.log:
                     logger(i)
@@ -203,9 +203,9 @@ class GANetwork():
                     saver.save(session, os.path.join(self.directory, self.name), self.iterations)
                     last_save = timer()
         except KeyboardInterrupt:
-            print()
-            print("Stopping the training")
+            pass
         finally:
+            print()
             if self.log:
                 logger.close()
             print("Saving the network")
@@ -233,7 +233,7 @@ class SummaryLogger():
         if iteration%self.image_interval == 0:
             #Hack to make tensorboard show multiple images, not just the latest one
             feed_dict = self.gan.__get_feed_dict__()
-            feed_dict[self.gan.generator_input] = self.batch_input,
+            feed_dict[self.gan.generator_input] = self.batch_input
             image, summary = self.session.run(
                 [tf.summary.image(
                     'training/iteration/%d'%iteration,
