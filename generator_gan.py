@@ -170,7 +170,7 @@ class GANetwork():
             session.run([self.discriminator_solver], feed_dict=self.__get_feed_dict__())
 
 
-    def train(self, batches=100000, print_interval=1):
+    def train(self, batches=100000, print_interval=10):
         """Train the network for a number of batches (continuing if there is an existing model)"""
         start_time = last_time = last_save = timer()
         session, saver, start_iteration = self.get_session()

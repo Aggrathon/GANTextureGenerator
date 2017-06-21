@@ -60,10 +60,10 @@ def conv2d(tensors, output_size: int, name: str='conv2d', stddev: float=0.02, te
 	with tf.variable_scope(name):
 		weight, bias = weight_bias([5, 5, int(tensors[0].get_shape()[-1]), output_size], stddev, term, summary)
 		output = []
-		for tensor in tensors:
+		for i, tensor in enumerate(tensors):
 			conv = tf.nn.conv2d(tensor, weight, [1, 2, 2, 1], "SAME")
 			conv = tf.contrib.layers.batch_norm(conv, decay=0.9, updates_collections=None, scale=False,
-				trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
+				trainable=True, reuse=(i!=0), scope="normalization", is_training=True, epsilon=0.00001)
 			output.append(lrelu(tf.nn.bias_add(conv, bias)))
 		return output
 
@@ -96,10 +96,10 @@ def conv2d_transpose(tensors, batch_size=1, conv_size=32, name: str='conv2d_tran
 		filt, bias = filter_bias([5, 5, conv_size, tensor_shape[-1]], stddev, term, summary)
 		conv_shape = [batch_size, int(tensor_shape[1]*2), int(tensor_shape[2]*2), conv_size]
 		output = []
-		for tensor in tensors:
+		for i, tensor in enumerate(tensors):
 			deconv = tf.nn.conv2d_transpose(tensor, filt, conv_shape, [1, 2, 2, 1])
 			deconv = tf.contrib.layers.batch_norm(deconv, decay=0.9, updates_collections=None, scale=False,
-				trainable=True, reuse=True, scope="normalization", is_training=True, epsilon=0.00001)
+				trainable=True, reuse=(i!=0), scope="normalization", is_training=True, epsilon=0.00001)
 			output.append(tf.nn.relu(tf.nn.bias_add(deconv, bias)))
 		return output
 
@@ -120,12 +120,12 @@ def expand_relu(tensors, out_shape, name: str='expand_relu', norm: bool=True, st
 	with tf.variable_scope(name) as scope:
 		weight, bias = weight_bias([tensors[0].get_shape()[-1], np.prod(out_shape[1:])], stddev, term, summary)
 		output = []
-		for tensor in tensors:
+		for i, tensor in enumerate(tensors):
 			lin = tf.matmul(tensor, weight) + bias
 			reshape = tf.reshape(lin, out_shape)
 			if norm:
 				reshape = tf.contrib.layers.batch_norm(reshape, decay=0.9, updates_collections=None, scale=False,
-					trainable=True, reuse=True, scope=scope, is_training=True, epsilon=0.00001)
+					trainable=True, reuse=(i!=0), scope=scope, is_training=True, epsilon=0.00001)
 			output.append(tf.nn.relu(reshape))
 		return output
 

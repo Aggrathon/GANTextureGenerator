@@ -6,7 +6,7 @@ from image import ImageVariations
 
 CONFIG = {
     'colors': 3,
-    'batch_size': 192,
+    'batch_size': 16,
     'generator_base_width': 32,
     'image_size': 64,
     'input_size': 128,
